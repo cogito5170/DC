@@ -107,7 +107,7 @@ class SensorSource:
 
 
 def _base_prop(name: str) -> str:
-    """MS 의 `x__n`(창 안 표본 수) · `x__sum`(창 안 합)은 evidence 속성 x 에서 나온다 -- 근거는 x 의 창이다."""
+    """MS 의 `x__n`(창 안 표본 수) · `x__sum`(창 안 합)은 측정 속성 x 에서 나온다 -- 근거는 x 의 측정 창이다."""
     for suf in ("__n", "__sum"):
         if name.endswith(suf):
             return name[: -len(suf)]
@@ -115,9 +115,9 @@ def _base_prop(name: str) -> str:
 
 
 class MSUsageSource:
-    """ms.manager.StateManager 의 **파생 상태**만 읽는다(evidence 창의 원 측정은 값으로 내지 않는다 -- id 만 근거로).
+    """ms.manager.StateManager 의 **파생 상태**만 읽는다(측정 창 `measurements` 의 원 측정은 값으로 내지 않는다 -- id 만 근거로).
 
-    MS 의 시각은 초(clock) 다 -- ms 로 바꿔 준다. 파생의 시각은 MS 규약대로 입력 중 가장 오래된 관측이다.
+    MS 의 시각은 초(clock) 다 -- ms 로 바꿔 준다. 파생의 시각은 MS 규약대로 **관측** 입력 중 가장 오래된 것이다(설정은 빠진다, MS PC-03).
     MS 의 문턱은 손으로 둔 것이라(usage_model: "문턱은 잰 것이 아니다") 근거 종류는 OPERATOR_ASSUMED 다.
     """
     authoritative = True
@@ -149,7 +149,7 @@ class MSUsageSource:
         inputs = sorted(d.inputs)
         refs = []
         for p in dict.fromkeys(_base_prop(x) for x in inputs):
-            win = self.manager.evidence.get(entity, {}).get(p)
+            win = self.manager.measurements.get(entity, {}).get(p)     # 측정 창(MS PC-04 의 새 이름). 설정 입력은 근거가 아니다
             if win:
                 refs.extend(x.src for x in win)
             elif node.props.get(p) is not None:
