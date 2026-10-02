@@ -6,7 +6,7 @@ from dc import PURPOSES, DecisionContextBuilder, PurposeError, QueryRef, from_di
 from dc.snapshot import SnapshotError
 
 from .helpers import NOW, ms_source
-from .test_integration import MS, msmanager, msusage
+from .test_integration import MS, msmanager, msusage, why
 
 
 class FakeWorld:
@@ -131,7 +131,7 @@ class Queries(unittest.TestCase):
         self.assertNotIn("source", spec)
 
 
-@unittest.skipIf(msmanager is None, f"MS 저장소가 없다: {MS}")
+@unittest.skipIf(msmanager is None, why("MS"))
 class OnRealMSGraph(unittest.TestCase):
     def setUp(self):
         from ms.query import StateQuery, run_query

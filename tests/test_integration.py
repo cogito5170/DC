@@ -1,6 +1,8 @@
 """진짜 State 층에 붙여 본다 -- Sensor(llmsensor.state.StateEngine) · MS(usage_model). 옆 저장소가 없으면 건너뛴다.
 
-    DC_SENSOR_PATH (기본 ../Sensor) · DC_MS_PATH (기본 ../MS)
+    DC_SENSOR_PATH (기본 ../Sensor) · DC_MS_PATH (기본 ../MS) · ACTION_REPO (기본 ../action -- MS 의 필수 의존, BD-111)
+
+건너뛸 때는 **실제 까닭**을 적는다(baseline CMD-D17): 저장소가 없는지, 있는데 import 가 실패했는지(그 예외 그대로).
 """
 import importlib
 import os
@@ -13,28 +15,38 @@ from dc import DecisionContextBuilder, MSUsageSource, SensorSource, policy_state
 ROOT = Path(__file__).resolve().parents[1]
 SENSOR = Path(os.environ.get("DC_SENSOR_PATH", ROOT.parent / "Sensor"))
 MS = Path(os.environ.get("DC_MS_PATH", ROOT.parent / "MS"))
+ACTION = Path(os.environ.get("ACTION_REPO", ROOT.parent / "action"))
+WHY: dict = {}              # 저장소 이름 -> 건너뛴 까닭(처음 실패한 것)
 
 
-def _load(path: Path, mod: str):
+def _load(path: Path, mod: str, name: str):
     if not (path / mod.split(".")[0]).is_dir():
+        WHY.setdefault(name, f"{name} 저장소가 없다: {path}")
         return None
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
     try:
         return importlib.import_module(mod)
-    except Exception:
+    except Exception as e:      # 있는데 못 읽었다 -- 없다고 말하지 않는다
+        WHY.setdefault(name, f"{name} import 실패({path}): {type(e).__name__}: {e}")
         return None
 
 
-demo = _load(SENSOR, "eval.state_demo")
-msmanager, msusage, mspolicy = (_load(MS, m) for m in ("ms.manager", "ms.usage_model", "ms.policy"))
-msruntime = _load(MS, "ms.runtime")
+def why(*names) -> str:
+    return " · ".join(WHY[n] for n in names if n in WHY) or "?"
+
+
+if (ACTION / "action").is_dir() and str(ACTION) not in sys.path:     # MS 가 import 하는 action 을 MS 처럼 옆에서 찾는다
+    sys.path.insert(0, str(ACTION))
+demo = _load(SENSOR, "eval.state_demo", "Sensor")
+msmanager, msusage, mspolicy = (_load(MS, m, "MS") for m in ("ms.manager", "ms.usage_model", "ms.policy"))
+msruntime = _load(MS, "ms.runtime", "MS")
 # usage-model-3 부터 DENY 신호 이름이 arbiter_denies 다(WALP 를 뺐다)
 DENY_SIG = ("interaction.arbiter_denies" if msusage and "arbiter_denies" in msusage.SESSION["properties"]
             else "interaction.walp_denies")
 
 
-@unittest.skipIf(demo is None, f"Sensor 저장소가 없다: {SENSOR}")
+@unittest.skipIf(demo is None, why("Sensor"))
 class WithSensor(unittest.TestCase):
     def setUp(self):
         from llmsensor.state import StateEngine, from_telemetry
@@ -124,7 +136,7 @@ class WithSensor(unittest.TestCase):
             self.assertNotIn(raw, s)
 
 
-@unittest.skipIf(msmanager is None or msusage is None, f"MS 저장소가 없다: {MS}")
+@unittest.skipIf(msmanager is None or msusage is None, why("MS"))
 class WithMS(unittest.TestCase):
     def setUp(self):
         self.clock = [1000.0]
@@ -204,7 +216,7 @@ class WithMS(unittest.TestCase):
 
 @unittest.skipIf(msruntime is None or "state_reader" not in getattr(getattr(msruntime, "Runtime", None), "__init__",
                                                                      lambda: 0).__code__.co_varnames,
-                 "MS Runtime 에 state_reader 자리가 없다")
+                 why("MS") if msruntime is None else "MS Runtime 에 state_reader 자리가 없다")
 class WithMSRuntime(unittest.TestCase):
     """진짜 MS Runtime(모의 provider)에 MSStateReader 를 꽂는다 -- CR 이 결정 문맥을 거친 상태를 본다."""
 
@@ -330,7 +342,7 @@ class WithMSRuntime(unittest.TestCase):
 
 
 
-@unittest.skipIf(demo is None, f"Sensor 저장소가 없다: {SENSOR}")
+@unittest.skipIf(demo is None, why("Sensor"))
 class WithSensorActions(unittest.TestCase):
     """CMD-D16: 실행기의 행동 실체(action:<실행>:<command_id>)가 state-export/2 를 거쳐 DC 주체 · 문맥 키에 맞게 실린다."""
 
@@ -368,7 +380,24 @@ class WithSensorActions(unittest.TestCase):
         self.assertEqual(src.subject()["tool"], ())                                 # 대조: 도구 역할은 그대로
 
 
-@unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")
+class SkipReasons(unittest.TestCase):
+    """CMD-D17: 옆 저장소 시험을 건너뛸 때 까닭이 맞다 -- 있는데 import 가 안 되면 '없다' 가 아니라 그 예외를 말한다."""
+
+    def test_present_but_unimportable_is_not_reported_missing(self):
+        for name, path, mod, loaded in (("MS", MS, "ms", msmanager), ("Sensor", SENSOR, "eval", demo)):
+            if loaded is not None:
+                self.assertNotIn(name, WHY)
+            elif (path / mod).is_dir():
+                self.assertIn("import 실패", why(name), name)
+            else:
+                self.assertIn("저장소가 없다", why(name), name)
+
+    def test_action_is_looked_up_beside_like_ms(self):
+        if (ACTION / "action").is_dir():
+            self.assertIn(str(ACTION), sys.path)
+
+
+@unittest.skipIf(demo is None or msmanager is None, why("Sensor", "MS"))
 class BothSources(unittest.TestCase):
     def test_provider_selection_from_two_state_layers(self):
         from llmsensor.state import StateEngine, from_telemetry

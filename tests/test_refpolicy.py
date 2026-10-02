@@ -12,7 +12,7 @@ from dc import PURPOSES, ContextStore, DecisionContextBuilder, SensorSource, Sna
 from refpolicy import context as cpol, execution as epol, provider as ppol
 
 from .helpers import MIN, NOW, builder, rec, sensor_source, subject
-from .test_integration import demo  # 옆 Sensor 저장소를 sys.path 에 올리는 일을 같이 쓴다
+from .test_integration import demo, why  # 옆 Sensor 저장소를 sys.path 에 올리는 일을 같이 쓴다
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -77,7 +77,7 @@ class PoliciesReadOnlyTheContext(unittest.TestCase):
             self.assertNotIn("refpolicy", p.read_text(encoding="utf-8"), p.name)
 
 
-@unittest.skipIf(demo is None, "Sensor 저장소가 없다")
+@unittest.skipIf(demo is None, why("Sensor"))
 class OnRealSensorStates(unittest.TestCase):
     """Sensor tests/test_decision_context.py 의 정책 시험을 DC 어휘로 옮긴 것."""
     RUN = "cc_stream:demo"
