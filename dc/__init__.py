@@ -1,9 +1,9 @@
 """DC -- Decision Context. State 층(무엇이 일어나고 있나)과 Policy 층(무엇을 할까) 사이의 계약층.
 
-    Telemetry  "무엇을 보았나"          (Sensor 의 telemetry · MS 의 RunRecord)
+    Telemetry  "무엇을 보았나"          (L0: cogito5170/Telemetry · Sensor 수집기 · MS RunRecord)
     State      "무엇이 일어나고 있나"    (Sensor 의 StateEngine -- 내보내기 계약으로 · MS 의 usage_model)
     DC         "이번 결정에 무엇이 중요한가"  ← 여기
-    Policy     "무엇을 할까"             (MS 의 Context · Prompt · Provider Policy)
+    Policy     "무엇을 할까"             (MS Provider Policy · CR 안의 맥락 · 프롬프트 계획) -> Validate · Arbitrate · Guard
 
     model.py     형: DecisionContext = digest + Core(정책이 읽는 것) + Provenance(감사 · 재현). StateRecord · Constraint
     project.py   투영(저장 안 함): StateView · Validity · Action 목록

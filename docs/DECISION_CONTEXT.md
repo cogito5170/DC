@@ -1,7 +1,8 @@
 # Decision Context 설계 -- 2026-10-01
 
 ```
-Policy    "무엇을 할까"               MS: Context · Prompt · Provider Policy, WALP
+Policy    "무엇을 할까"               MS: Provider Policy · CR(Context Runtime) 안의 맥락 · 프롬프트 계획
+            └ 그 뒤 Validate · Arbitrate · Guard(MS Arbiter 를 가르는 중, baseline BD-24 · PC-10) -- DC 는 거기에 관여하지 않는다
    ▲
 DC        "이번 결정에 무엇이 중요한가"   ← 이 저장소
    ▲
@@ -31,7 +32,7 @@ State 층은 손대지 않는다 -- 어댑터가 읽기만 한다.
 |---|---|---|---|
 | System State | 세계가 지금 어떠한가 | Sensor · MS | `execution_health = UNRESOLVED_FAILURES` |
 | **Decision Context** | 이번 정책 결정을 위해 무엇을 알아야 하나 | **DC** | `purpose=provider_selection` · states · constraints · actions |
-| LLM Context | LLM 에게 무엇을 보일까 | MS `ContextPolicy` · `PromptPolicy` | 지시 · 질의 행 · 예시 |
+| LLM Context | LLM 에게 무엇을 보일까 | MS CR(`ms/cr.py`: 맥락 · 프롬프트 꼴) | 지시 · 질의 행 · 예시 |
 
 Decision Context 를 그대로 프롬프트에 넣지 않는다. 흐름은 `State -> Decision Context -> Context Policy -> LLM Context` 다.
 DC 패키지는 프롬프트 · provider 코드를 import 하지 않는다(시험이 본다).
