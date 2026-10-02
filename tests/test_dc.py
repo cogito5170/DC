@@ -201,7 +201,7 @@ class I5_Traceable(unittest.TestCase):
     def test_provenance_names_sources_and_versions(self):
         ctx = build("provider_selection")
         prov = ctx.provenance.to_dict()
-        self.assertEqual(prov["purpose_version"], "purpose-provider-1")
+        self.assertEqual(prov["purpose_version"], "purpose-provider-2")
         self.assertEqual(prov["sources"], {"ms": {"model": "usage-model-1"}, "sensor": {"config": "test-v1"}})
 
 
@@ -300,6 +300,16 @@ class Stages(unittest.TestCase):
         self.assertFalse(v.usable)
         self.assertIn("agent.resource_state", ctx.validity.not_applicable)
         self.assertNotIn("agent.resource_state", ctx.validity.missing_required)
+
+    def test_not_applicable_is_not_flagged_stale(self):
+        v = build("provider_selection", now=NOW + 45 * MIN).state("agent.resource_state")
+        self.assertEqual((v.status, v.issues), ("NOT_APPLICABLE", ()))
+
+    def test_as_of_lists_only_registered_sources(self):
+        b = DecisionContextBuilder([sensor_source()])
+        ctx = b.build("provider_selection", subject(), now_ms=NOW)
+        self.assertEqual(dict(ctx.as_of), {"sensor": NOW})
+        self.assertEqual(ctx.state("session.latency_pressure").issues[0].code, "NO_SOURCE")
 
     def test_complete_when_all_required_resolved(self):
         self.assertTrue(build("provider_selection").validity.complete)

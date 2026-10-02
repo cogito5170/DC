@@ -2,7 +2,7 @@
 ====================================================================================================
 1. 같은 State, 다른 목적 -> 다른 투영
 ====================================================================================================
-dc-6fe63983a5d24935  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-b336d35a85e6727a  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   session.token_budget_pressure          HIGH                         INFERRED       FRESH     age=0s    
   session.context_pressure               MEDIUM                       INFERRED       FRESH     age=0s    
   session.task_complexity                LOW                          INFERRED       FRESH     age=0s    
@@ -13,16 +13,17 @@ dc-6fe63983a5d24935  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 1
   constraints: max_context_chars <= 3000
   actions: KEEP, COMPRESS, SUMMARIZE, RETRIEVE, DROP, DEFER
 
-dc-656ab67426af196b  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-4ef9de255bc728d4  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
   runtime.runtime_reliability            NO_FAILURE_OBSERVED          INFERRED       FRESH     age=0s    
   session.latency_pressure               HIGH                         INFERRED       FRESH     age=0s    
   session.answer_reliability             HIGH                         INFERRED       FRESH     age=0s    
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
+  agent.latency_state                    None                         NOT_APPLICABLE FRESH     age=0s      ✗
   constraints: max_cost_usd <= 0.1, max_latency_ms <= 5000
   actions: KEEP_PROVIDER, SWITCH_PROVIDER, RETRY, STOP
 
-dc-c5c9577709b927e8  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
+dc-ebe02086ede4b087  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
   agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
   tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=0s    
   tool[Edit].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=5s    
@@ -33,6 +34,8 @@ dc-c5c9577709b927e8  purpose=execution_control  as_of={'sensor': 18550.0}  compl
   task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=0s    
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
+  agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
+  task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
   constraints: max_retries <= 2
   actions: CONTINUE, RETRY, (ESCALATE: human_reviewer 없음), STOP
 
@@ -40,14 +43,14 @@ dc-c5c9577709b927e8  purpose=execution_control  as_of={'sensor': 18550.0}  compl
 ====================================================================================================
 2. Freeze -- 내용 해시 id. 같은 입력이면 같은 id, State 가 바뀌어도 앞 문맥은 그대로
 ====================================================================================================
-  두 번 지음: dc-a27a7839003146d7 == dc-a27a7839003146d7 -> True
-  LLM 제안(FAILING) 뒤: dc-a27a7839003146d7 -> 같은가 True (제안은 State 가 아니다)
+  두 번 지음: dc-8d5cf9c42303e4e2 == dc-8d5cf9c42303e4e2 -> True
+  LLM 제안(FAILING) 뒤: dc-8d5cf9c42303e4e2 -> 같은가 True (제안은 State 가 아니다)
   verify(): True
 
 ====================================================================================================
 3. 45 분 뒤(새 관측 없음) -- STALE 은 지우지 않고 표시하며, 정책에는 '모름' 으로 간다
 ====================================================================================================
-dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
+dc-be2d950690d85df1  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
   agent.execution_health                 UNRESOLVED_FAILURES          STALE          STALE     age=2700s   ✗ [STALE_TTL]
   tool[Bash].tool_execution_health       RECOVERED_FAILURES           STALE          STALE     age=2700s   ✗ [STALE_TTL]
   tool[Edit].tool_execution_health       NO_FAILURE_OBSERVED          STALE          STALE     age=2705s   ✗ [STALE_TTL]
@@ -58,6 +61,8 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
   task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=2700s 
   agent.resource_state                   WITHIN_BUDGET                STALE          STALE     age=2700s   ✗ [STALE_TTL]
   runtime.rate_limit_state               AVAILABLE                    STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
+  task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
   missing_required: agent.execution_health, runtime.rate_limit_state
   actions: CONTINUE, RETRY, (ESCALATE: human_reviewer 없음), STOP
 
@@ -85,8 +90,8 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
 6. 기록 꼴(to_dict) -- provider_selection, 줄임
 ====================================================================================================
 {
- "id": "dc-dabaefb12636da74",
- "digest": "dabaefb12636da74fce2a9ecc5b9fc8d13d6abfadcd1f2950aed8dba064be0b4",
+ "id": "dc-afc0d59f550e89d6",
+ "digest": "afc0d59f550e89d649173e4ef4c4756297d6e6e3e6923857c546a70575381adb",
  "purpose": "provider_selection",
  "as_of": {
   "ms": 1300000.0,
@@ -120,9 +125,9 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
    "age_ms": 0.0,
    "ttl_ms": 300000,
    "observed_at_ms": 18550.0,
-   "basis": "DEFINITIONAL",
-   "rule_id": "rate-limit-state-v1",
-   "rule_version": 1,
+   "basis": "RUNTIME_DECLARED",
+   "rule_id": "rate-limit-state-v2",
+   "rule_version": 2,
    "evidence_refs": [
     "runtime:demo:example/rate_limit_utilization@23"
    ],
@@ -211,20 +216,23 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
    "agent.resource_state"
   ],
   "uncertain": [],
-  "not_applicable": [],
+  "not_applicable": [
+   "agent.latency_state"
+  ],
   "missing_required": [],
   "rejected": []
  },
  "provenance": {
   "builder": "dc-builder-1",
-  "purpose_version": "purpose-provider-1",
+  "purpose_version": "purpose-provider-2",
   "sources": {
    "ms": {
     "model": "usage-model-3"
    },
    "sensor": {
     "config": "demo-v1",
-    "rules": "completion-state-v1@1,context-pressure-v1@1,execution-health-v1@1,progress-state-v1@1,rate-limit-state-v1@1,resource-pressure-v1@1,resource-state-v1@1,runtime-reliability-v1@1,tool-execution-health-v1@1"
+    "contract": "llmsensor.state-export/1",
+    "rules": "completion-state-v1@1,context-pressure-v1@1,execution-health-v1@1,execution-interruption-v1@1,latency-state-v1@1,progress-state-v1@1,quality-state-v1@1,rate-limit-state-v2@2,resource-pressure-v1@1,resource-state-v1@1,runtime-reliability-v1@1,tool-execution-health-v1@1"
    }
   }
  }

@@ -140,13 +140,14 @@ PROMPT_POLICY = Purpose(
 )
 
 PROVIDER_SELECTION = Purpose(
-    name="provider_selection", version="purpose-provider-1",
+    name="provider_selection", version="purpose-provider-2",
     meaning="누구에게 물을지(Provider Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(S, "runtime", "rate_limit_state"),
           StateRef(S, "runtime", "runtime_reliability"),
           StateRef(M, "session", "latency_pressure"),
           StateRef(M, "session", "answer_reliability"),
-          StateRef(S, "agent", "resource_state", required=False)),
+          StateRef(S, "agent", "resource_state", required=False),
+          StateRef(S, "agent", "latency_state", required=False)),
     constraints=("max_cost_usd", "max_latency_ms", "allowed_providers", "data_residency"),
     actions=(ActionSpec("KEEP_PROVIDER"),
              ActionSpec("SWITCH_PROVIDER", ("alternate_provider",), "다른 provider 가 설정되어 있어야"),
@@ -155,14 +156,16 @@ PROVIDER_SELECTION = Purpose(
 )
 
 EXECUTION_CONTROL = Purpose(
-    name="execution_control", version="purpose-execution-1",
+    name="execution_control", version="purpose-execution-2",
     meaning="실행을 이어 갈지 · 다시 할지 · 멈출지 정하기 위해 알아야 할 것",
     refs=(StateRef(S, "agent", "execution_health"),
           StateRef(S, "tool", "tool_execution_health", required=False),
           StateRef(S, "task", "progress_state"),
           StateRef(S, "task", "completion_state"),
           StateRef(S, "agent", "resource_state", required=False),
-          StateRef(S, "runtime", "rate_limit_state")),
+          StateRef(S, "runtime", "rate_limit_state"),
+          StateRef(S, "agent", "execution_interruption", required=False),
+          StateRef(S, "task", "quality_state", required=False)),
     constraints=("max_cost_usd", "max_retries", "require_tool_confirmation"),
     actions=(ActionSpec("CONTINUE"),
              ActionSpec("RETRY", ("retry_budget",)),

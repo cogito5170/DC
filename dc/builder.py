@@ -139,6 +139,8 @@ class DecisionContextBuilder:
             s.freshness = FRESH
             if s.ttl_ms is not None and s.age_ms > s.ttl_ms:
                 s.freshness = STALE
+                if not (claims or r.status == STALE):   # 값을 주장하지 않는 것(UNKNOWN · NOT_APPLICABLE · INVALID)은 낡음을 문제로 삼지 않는다
+                    return
                 by_purpose = s.ref.max_age_ms is not None and s.age_ms > s.ref.max_age_ms and \
                     (r.ttl_ms is None or s.age_ms <= r.ttl_ms)
                 s.flag(STALE_PURPOSE if by_purpose else STALE_TTL, f"나이 {s.age_ms:.0f}ms > {s.ttl_ms:.0f}ms",
@@ -202,9 +204,9 @@ class DecisionContextBuilder:
         return self.purposes[purpose]
 
     def _nows(self, P: Purpose, now_ms) -> dict:
-        names = sorted({r.source for r in P.refs})
+        names = sorted({r.source for r in P.refs} & set(self.sources))     # 등록 안 된 소스는 '지금' 도 없다
         if isinstance(now_ms, dict):
-            lack = [n for n in names if n in self.sources and n not in now_ms]
+            lack = [n for n in names if n not in now_ms]
             if lack:
                 raise ValueError(f"소스 {lack} 의 '지금' 이 없다(소스마다 시각 기준이 다를 수 있다)")
             out = {n: now_ms[n] for n in names if n in now_ms}

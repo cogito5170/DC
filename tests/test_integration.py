@@ -60,6 +60,37 @@ class WithSensor(unittest.TestCase):
         self.assertIn("task.progress", sensor_dc["not_applicable"])
         self.assertEqual(c.state("task.progress_state").status, "NOT_APPLICABLE")
 
+    def test_reads_only_the_export_contract(self):
+        """엔진 안(current · view · reg · cfg)을 감추고 계약 넷만 남겨도 같은 문맥이 나온다."""
+        E = self.E
+
+        class ContractOnly:
+            EXPORT_CONTRACT = E.EXPORT_CONTRACT
+            state_catalog, export_state, subjects, as_of = E.state_catalog, E.export_state, E.subjects, E.as_of
+        b = DecisionContextBuilder([SensorSource(ContractOnly())])
+        self.assertEqual(b.build("execution_control", self.subj, now_ms=self.now, capabilities={"retry_budget": True}
+                                 ).digest, self.ctx().digest)
+
+    def test_unknown_contract_version_is_refused(self):
+        from dc import SourceError
+
+        class Future:
+            EXPORT_CONTRACT = "llmsensor.state-export/2"
+        with self.assertRaises(SourceError):
+            SensorSource(Future())
+
+    def test_run_bound_now(self):
+        src = SensorSource(self.E, run_id=demo.RUN)
+        self.assertEqual(src.now_ms(), self.now)
+        with self.assertRaises(ValueError):
+            SensorSource(self.E).now_ms()
+
+    def test_new_sensor_states_flow_through(self):
+        c = self.ctx()
+        for k in ("agent.execution_interruption", "task.quality_state"):
+            self.assertIn(k, c.keys())
+        self.assertFalse([s.key for s in c.states for i in s.issues if i.code == "OUT_OF_DOMAIN"])
+
     def test_evidence_refs_trace_back_to_observations(self):
         c = self.ctx()
         v = c.state("agent.execution_health")

@@ -9,7 +9,7 @@
 
 어댑터 둘은 Sensor · MS 를 **import 하지 않는다**(덕 타이핑). 저장소가 따로라 서로의 설치를 요구하지 않기 위해서다.
 
-    SensorSource   llmsensor.state.StateEngine  -- 실행 단위(agent · task · runtime · tool) 의미 상태
+    SensorSource   llmsensor 의 내보내기 계약(llmsensor.state-export/1) -- 실행 단위(agent · task · runtime · tool) 의미 상태
     MSUsageSource  ms.manager.StateManager + ms.usage_model -- 세션 단위 사용 상태
     StaticSource   (실체, 이름) -> StateRecord 표. 시험 · 기록 재생용
 """
@@ -56,41 +56,54 @@ class StaticSource:
         return dict(self._versions)
 
 
+SENSOR_CONTRACT = "llmsensor.state-export/1"
+
+
 class SensorSource:
-    """llmsensor.state.StateEngine 을 읽는다. 시각 기준은 그 엔진의 관측 시각(unix_ms 또는 monotonic_ms)."""
+    """Sensor 의 **내보내기 계약**(llmsensor.state-export/1)만 읽는다 -- 엔진 안(current · view · reg · cfg)은 보지 않는다.
+
+    계약: engine.EXPORT_CONTRACT · state_catalog() · export_state(entity, name, now) · subjects(run_id) · as_of(run_id).
+    계약 판본이 다르면 추측하지 않고 거절한다(SourceError). 판정기 · 참조 정책 · Sensor 자체의 결정 문맥은 읽지 않는다.
+
+    시각 기준은 그 실행의 관측 시각(unix_ms 또는 monotonic_ms). run_id 를 주면 now_ms() 가 그 실행에서 본 가장 늦은 관측 시각을
+    준다 -- '마지막 사건 기준의 지금' 이라 그 뒤의 낡음은 안 보인다. 실제 낡음을 보려면 같은 시각 기준의 '지금' 을 빌더에 직접 준다.
+    """
     authoritative = True
 
-    def __init__(self, engine, name: str = "sensor"):
-        self.engine, self.name = engine, name
+    def __init__(self, engine, name: str = "sensor", run_id: "str | None" = None):
+        got = getattr(engine, "EXPORT_CONTRACT", None)
+        if got != SENSOR_CONTRACT:
+            raise SourceError(f"Sensor 내보내기 계약이 {got!r} -- 이 어댑터는 {SENSOR_CONTRACT!r} 만 읽는다")
+        self.engine, self.name, self.run_id = engine, name, run_id
+        self._catalog = engine.state_catalog()
 
     def read(self, entity, name, now_ms):
-        E = self.engine
-        rule = E.reg.rules.get(name)
-        st = E.current.get((entity, name))
-        if st is None:
-            return StateRecord(self.name, entity, name, None, UNKNOWN, rule.basis.value if rule else "OBSERVED",
-                               rule_id=rule.id if rule else "", rule_version=rule.version if rule else None,
-                               reason="아직 계산되지 않았다" if rule else "Sensor 에 없는 상태",
-                               ttl_ms=E.cfg.ttl_ms.get(name))
-        sv = E.view(st, now_ms)
-        return StateRecord(self.name, entity, name, st.value, sv.status.value, st.basis.value, rule_id=st.rule_id,
-                           rule_version=st.rule_version, evidence_refs=tuple(sv.evidence_refs), reason=st.reason,
-                           observed_at_ms=st.observed_at, ttl_ms=E.cfg.ttl_ms.get(name), permanent=bool(st.final),
-                           since_ms=st.since)
+        d = self.engine.export_state(entity, name, now_ms)
+        return StateRecord(self.name, d["entity"], d["name"], d["value"], d["status"], d["basis"] or "OBSERVED",
+                           rule_id=d["rule_id"] or "", rule_version=d["rule_version"],
+                           evidence_refs=tuple(d["evidence_refs"]), reason=d["reason"], observed_at_ms=d["observed_at"],
+                           ttl_ms=d["ttl_ms"], permanent=bool(d["final"]), since_ms=d["since"])
 
     def domain(self, entity, name):
-        r = self.engine.reg.rules.get(name)
-        return tuple(r.values) if r else None
+        st = self._catalog["states"].get(name)
+        return tuple(st["values"]) if st else None
 
     def versions(self) -> dict:
-        E = self.engine
-        return {"config": E.cfg.version,
-                "rules": ",".join(f"{r.id}@{r.version}" for _, r in sorted(E.reg.rules.items()))}
+        c = self._catalog
+        return {"contract": c["contract"], "config": c["config_version"],
+                "rules": ",".join(f"{v['rule_id']}@{v['rule_version']}" for _, v in sorted(c["states"].items()))}
 
-    def subject(self, run_id: str) -> dict:
-        """실행 하나의 역할 -> 실체. 도구는 그 실행에서 상태가 있는 것 전부."""
-        tools = tuple(sorted({e for (e, _n) in self.engine.current if e.startswith(f"tool:{run_id}:")}))
-        return {"agent": f"agent:{run_id}", "task": f"task:{run_id}", "runtime": f"runtime:{run_id}", "tool": tools}
+    def subject(self, run_id: "str | None" = None) -> dict:
+        s = self.engine.subjects(run_id or self.run_id)
+        return {**s, "tool": tuple(s["tool"])}
+
+    def now_ms(self) -> float:
+        if self.run_id is None:
+            raise ValueError("SensorSource 에 run_id 가 없다 -- '지금' 을 빌더에 직접 주거나 run_id 를 준다")
+        at = self.engine.as_of(self.run_id)["at"]
+        if at is None:
+            raise ValueError(f"실행 {self.run_id} 의 관측 시각이 없다 -- '지금' 을 지어내지 않는다")
+        return float(at)
 
 
 def _base_prop(name: str) -> str:

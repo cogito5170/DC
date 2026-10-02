@@ -1,0 +1,28 @@
+Sensor 레코드 185 개 · 실행 cc:this-session · as_of {'contract': 'llmsensor.state-export/1', 'run_id': 'cc:this-session', 'at': 1790912803380.0, 'time_base': 'unix_ms'} · now 1790912803380.0
+
+dc-0cb24689546e544a  purpose=execution_control  as_of={'sensor': 1790912803380.0}  complete=False
+  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=10s   
+  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=10s   
+  tool[Read].tool_execution_health       NO_FAILURE_OBSERVED          STALE          STALE     age=25943s  ✗ [STALE_TTL]
+  tool[ToolSearch].tool_execution_health NO_FAILURE_OBSERVED          STALE          STALE     age=25830s  ✗ [STALE_TTL]
+  tool[WebFetch].tool_execution_health   UNRESOLVED_FAILURES          STALE          STALE     age=25822s  ✗ [STALE_TTL]
+  tool[Write].tool_execution_health      NO_FAILURE_OBSERVED          INFERRED       FRESH     age=27s   
+  task.progress_state                    None                         UNKNOWN        FRESH     age=0s      ✗
+  task.completion_state                  RUNNING                      INFERRED       FRESH     age=0s    
+  agent.resource_state                   None                         NOT_APPLICABLE STALE     age=5111s   ✗
+  runtime.rate_limit_state               None                         UNKNOWN        UNTIMED   age=-       ✗
+  agent.execution_interruption           NONE_OBSERVED                INFERRED       FRESH     age=10s   
+  task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
+  missing_required: task.progress_state, runtime.rate_limit_state
+  actions: CONTINUE, RETRY, ESCALATE, STOP
+
+dc-3bdd240ae4a128f4  purpose=provider_selection  as_of={'sensor': 1790912803380.0}  complete=False
+  runtime.rate_limit_state               None                         UNKNOWN        UNTIMED   age=-       ✗
+  runtime.runtime_reliability            NO_FAILURE_OBSERVED          INFERRED       FRESH     age=0s    
+  session.latency_pressure               None                         UNKNOWN        UNTIMED   age=-       ✗ [UNBOUND_ROLE]
+  session.answer_reliability             None                         UNKNOWN        UNTIMED   age=-       ✗ [UNBOUND_ROLE]
+  agent.resource_state                   None                         NOT_APPLICABLE STALE     age=5111s   ✗
+  agent.latency_state                    None                         NOT_APPLICABLE FRESH     age=0s      ✗
+  missing_required: runtime.rate_limit_state, session.latency_pressure, session.answer_reliability
+  actions: KEEP_PROVIDER, (SWITCH_PROVIDER: alternate_provider 없음), (RETRY: retry_budget 없음), STOP
+

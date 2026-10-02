@@ -99,8 +99,8 @@ StateView
 | `context_runtime` | purpose-cr-1 | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
 | `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
-| `provider_selection` | purpose-provider-1 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · STOP |
-| `execution_control` | purpose-execution-1 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
+| `provider_selection` | purpose-provider-2 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · STOP |
+| `execution_control` | purpose-execution-2 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
 
 `context_policy` · `prompt_policy` 의 상태는 MS 의 `AdaptiveContext` · `AdaptivePrompt` 가 실제로 읽는 것과 같다
 (그래서 `policy_state(ctx, "session")` 을 그대로 넘길 수 있다).
@@ -174,6 +174,40 @@ DC 쪽(`tests/test_integration.py::WithMSRuntime`): 진짜 Runtime(모의 provid
 
 재현: 기록의 `state_source.digest` 와 `ctx.to_dict()`(리더의 `last` 또는 `sink`)를 맞춰 "그 결정이 본 것" 을 확인한다.
 
+## 7.1 Sensor 와의 배선 -- 내보내기 계약(2026-10-02)
+
+Sensor 가 상태 층 밖으로 내는 길을 하나로 세웠다: `llmsensor.state-export/1`(Sensor `llmsensor/state/export.py`).
+`SensorSource` 는 **그 계약만** 읽는다 -- `EXPORT_CONTRACT` · `state_catalog()` · `export_state()` · `subjects()` · `as_of()`.
+엔진 안(`current` · `view` · `reg` · `cfg`)은 보지 않는다. 계약 판본이 다르면 추측하지 않고 거절한다.
+
+```
+Claude Code JSONL ─► Sensor 수집기(from_cc_jsonl) ─► StateEngine ─► export 계약 ─► dc.SensorSource ─► DecisionContext
+python3 examples/sensor_session.py ~/.claude/projects/<프로젝트>/<세션>.jsonl
+```
+
+시험: Sensor `tests/test_state_export.py`(칸 · 판본 · 사본 · UNKNOWN · 제안 안 나옴 · 판정기/정책 안 읽음, 변이 3 가지 빨강) ·
+DC `tests/test_integration.py::WithSensor`(엔진 안을 감추고 계약 넷만 남겨도 같은 digest · 판본 /2 거절 · 실행 기준 '지금' ·
+새 Sensor 상태가 값 집합 안에서 흐름, 변이 4 가지 빨강).
+
+### 이 작업 세션의 기록으로 돌려 본 것 (`examples/sensor_session_output.txt`)
+
+- `execution_control`: `agent.execution_health = UNRESOLVED_FAILURES`(FRESH)인데, 그 근거인 도구 상태 중 미해결인
+  `tool[WebFetch]` 는 7 시간 전 것이라 STALE 이다. **신선한 집계 상태가 낡은 구성 요소 위에 서 있다** -- Sensor 의 집계 상태는 새 관측마다
+  다시 계산되어 늘 FRESH 이기 때문이다. DC 는 지금 상태끼리 맞대어 보지 않으므로 이것을 잡지 못한다(9 절). 막힌 WebFetch 두 번이 세션
+  끝까지 `UNRESOLVED_FAILURES` 를 끌고 가는 것은 Sensor 문서가 이미 적어 둔 한계와 같다.
+- `rate_limit_state` · `quality_state` 는 UNKNOWN(Claude Code JSONL 에 그 관측이 없다) -> 필수가 빠져 `complete=False`.
+- `provider_selection` 은 MS 소스 없이 지으면 세션 상태가 UNKNOWN 으로 **남는다**(빠지지 않는다).
+
+## 7.2 DC 는 아직 바뀐다 -- 바꿔도 되는 것과 안 되는 것
+
+| | 무엇 | 바꾸면 |
+|---|---|---|
+| **바꿔도 된다** | 빌더의 다섯 단계 · 검사 · 문제 이름 · `DecisionContext` 꼴 · 목적 표 · 해시 방식 · `summary` | DC 안에서 끝난다. 목적을 바꾸면 그 판본만 올린다 |
+| **계약 -- 함부로 못 바꾼다** | Sensor 쪽 `llmsensor.state-export/1`(Sensor 소유) | 칸을 빼거나 뜻을 바꾸면 Sensor 가 /2 로 올리고, DC 의 `SensorSource` 를 같이 고친다 |
+| **계약 -- 함부로 못 바꾼다** | MS 쪽 `state_reader(um, sid) -> {"state", "record"}`(MS 소유) | 꼴을 바꾸면 MS 와 `MSStateReader` 를 같이 고친다 |
+
+두 저장소 모두 DC 를 import 하지 않는다. 그래서 DC 를 갈아엎어도 Sensor · MS 의 시험은 그대로 초록이다.
+
 ## 8. 시연에서 본 것 (`examples/demo_output.txt`)
 
 - 같은 State 에서 세 목적이 서로 다른 상태 묶음 · 제약 · 행동을 낸다(맥락 7 · provider 5 · 실행 10 상태).
@@ -193,7 +227,10 @@ DC 쪽(`tests/test_integration.py::WithMSRuntime`): 진짜 Runtime(모의 provid
 - `reason` 문자열 안의 수(예: `사용률 0.62 < 1`, `맥락 137,000 < 144,000`)는 남는다 -- Sensor `decision_context()` 와 같은
   예외다. 정책은 `reason` 을 해석하지 않는다(사람 · 로그용).
 - 두 소스의 '같은 현상' 을 맞대어 보는 교차 일관성 검사는 없다(예: Sensor `completion_state=ENDED` 인데 MS 가 아직 진행 중).
-  어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다.
+  어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다. 한 소스 안에서도 마찬가지다: 실제 기록에서 FRESH 인
+  `execution_health` 가 STALE 인 도구 상태를 근거로 삼는 것을 봤다(7.1) -- 집계의 신선도는 구성 요소의 신선도를 물려받지 않는다.
+- Sensor 저장소 안에도 결정 문맥이 있다(`llmsensor/decision/context`, 다른 세션이 지음 -- 목적 넷 · 얼림 · explain · 참조 정책).
+  이 저장소와 같은 일이다. 어느 쪽을 정본으로 둘지는 정하지 않았다.
 - **배선은 선택이다.** `state_reader` 를 안 주면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. CLI(`python3 -m ms ask`) ·
   평가 하니스(`ms eval`)에는 아직 리더를 꽂는 옵션이 없다 -- 사전등록 칸을 바꾸는 일이라 MS 쪽 결정이 먼저다.
 - `RunRecord.policy` 에 결정 · 상태를 남기는 것은 L0 Telemetry 의 경계 점검(cogito5170/Telemetry `docs/TELEMETRY.md` 7 절)에 어긋난다고

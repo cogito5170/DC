@@ -66,7 +66,7 @@ policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이
 목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 55 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 61 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
 ```
 
@@ -82,6 +82,8 @@ python3 examples/demo.py                         # 진짜 Sensor · MS State 로
 
 ## 알고 쓸 것
 
+- **Sensor 배선**: `SensorSource` 는 Sensor 의 내보내기 계약(`llmsensor.state-export/1`)만 읽는다. 실제 세션으로:
+  `python3 examples/sensor_session.py <세션>.jsonl`. **DC 는 아직 바뀐다** -- 바꿔도 되는 것과 계약(못 바꾸는 것)은 설계 문서 7.2 절.
 - **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 두 저장소는 서로 import 하지 않고, MS 의
   `state_reader` 이음매(함수 꼴 하나)로만 맞물린다. 안 꽂으면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. 자세히: 설계 문서 7 절.
 - MS 파생 상태의 시각은 입력 중 가장 오래된 것(예산 설정 포함)이라, MS 상태에 엄한 max_age 를 걸면 늘 STALE 이 된다.
