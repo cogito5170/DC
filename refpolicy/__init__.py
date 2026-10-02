@@ -3,7 +3,7 @@
 결정 문맥이 실제로 결정을 바꾸는지 재려고 지은 최소 결정론 정책이다. 입력은 `dc.DecisionContext` 하나뿐이다 --
 State 저장소 · 텔레메트리 · 소스를 보지 않는다. 그래서 DC 꼴이 바뀌면 여기가 먼저 깨진다(그것이 이 정책의 쓸모다).
 
-    context.py    context_policy      -> KEEP · COMPRESS · DROP           (Sensor manage_context 를 DC 어휘로)
+    context.py    agent_context       -> KEEP · REDUCE · COMPACT          (Sensor manage_context, BD-58)
     provider.py   provider_selection  -> KEEP_PROVIDER · SWITCH_PROVIDER · WAIT
     execution.py  execution_control   -> CONTINUE · RETRY · STOP · ESCALATE
 

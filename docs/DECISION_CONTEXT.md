@@ -138,6 +138,7 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 | 목적 | 판본 | 상태(필수 / *선택*) | 받는 제약 | 행동(필요 능력) |
 |---|---|---|---|---|
 | `context_runtime` | purpose-cr-2 (요청 질의: `ms_world`) | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
+| `agent_context` | purpose-agent-context-1 (BD-58) | agent: context_pressure / *agent: execution_interruption* | max_context_tokens | KEEP · REDUCE · COMPACT(runtime_compaction) -- 에이전트 런타임 자신의 맥락(Claude Code 자동 압축 등) |
 | `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
 | `provider_selection` | purpose-provider-3 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
@@ -268,8 +269,8 @@ baseline 이 이 저장소를 결정 문맥의 기준 구현으로 정했다(BD-
 `quality_state` 가 `UNAUTHORIZED_BASIS` 로 거절되고 있었다(처음 돌린 정책 쓸모에서 `quality_state` 영향 0). 근거 어휘를 Sensor 8 개로 넓혔다(PC-14).
 기본 허용은 ESTIMATE 만 뺀 일곱이다.
 
-Sensor 판과 다른 것(같은 결정이 아니다): 끝난 실행에서 CONTINUE · RETRY · STOP 을 문맥이 거르지 않는다(I6) -- 시험 정책이 거른다.
-런타임 압축 행동이 없다 -- 위 9 절.
+Sensor 판과 다른 것: 끝난 실행에서 CONTINUE · RETRY · STOP 을 문맥이 거르지 않는다(I6) -- 시험 정책이 거른다. 런타임 압축 행동은
+목적 `agent_context`(BD-58)로 되찾았다 -- 시험 맥락 정책은 Sensor 판과 같은 KEEP · REDUCE · COMPACT 다.
 
 ## 8. 시연에서 본 것 (`examples/demo_output.txt`)
 
@@ -291,8 +292,8 @@ Sensor 판과 다른 것(같은 결정이 아니다): 끝난 실행에서 CONTIN
 - 두 소스의 '같은 현상' 을 맞대어 보는 교차 일관성 검사는 없다(예: Sensor `completion_state=ENDED` 인데 MS 가 아직 진행 중).
   어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다. 한 소스 안에서도 마찬가지다: 실제 기록에서 FRESH 인
   `execution_health` 가 STALE 인 도구 상태를 근거로 삼는 것을 봤다(7.1) -- 집계의 신선도는 구성 요소의 신선도를 물려받지 않는다.
-- 런타임 압축(Claude Code 자동 압축을 시키는 것)에 해당하는 행동이 목적 어휘에 없다. Sensor 판 `COMPACT_CONTEXT` 는 시험 정책에서
-  `COMPRESS` 로 옮겼지만 같은 행동이 아니다 -- baseline 에 물었다(7.3).
+- (풀림, BD-58) 런타임 압축 행동이 없던 것: 목적 `agent_context`(KEEP · REDUCE · COMPACT)를 더했다. MS 의 LLM 맥락(`context_policy`)과
+  런타임 맥락은 다른 결정이다.
 - **배선은 선택이다.** `state_reader` 를 안 주면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. CLI(`python3 -m ms ask`) ·
   평가 하니스(`ms eval`)에는 아직 리더를 꽂는 옵션이 없다 -- 사전등록 칸을 바꾸는 일이라 MS 쪽 결정이 먼저다.
 - `RunRecord.policy` 에 결정 · 상태를 남기는 것은 L0 Telemetry 의 경계 점검(cogito5170/Telemetry `docs/TELEMETRY.md` 7 절)에 어긋난다고

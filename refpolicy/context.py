@@ -1,22 +1,22 @@
-"""시험 Context Policy -- 에이전트 맥락 압력(Sensor agent.context_pressure)으로 맥락을 어떻게 할지.
+"""시험 Context Policy -- 에이전트 런타임 자신의 맥락(목적 agent_context, baseline BD-58)을 맥락 압력으로 어떻게 할지.
 
-Sensor 판(reference-context-v1)의 COMPACT_CONTEXT(런타임 압축)는 DC 어휘(MS 맥락 동작)에 없다. 그래서 문턱 위는 COMPRESS,
-창에 닿으면 DROP 으로 옮겼다 -- **같은 결정이 아니다**(런타임에 압축을 시키는 것과 우리가 덜 싣는 것은 다른 행동이다).
+Sensor 판(reference-context-v1)과 같은 행동이다: 압축 문턱을 넘으면 COMPACT(런타임이 압축할 수 있으면), 창에 닿았거나 압축을
+못 하면 REDUCE, 모르면 KEEP. (한때 context_policy 의 COMPRESS · DROP 으로 옮겼던 것을 BD-58 로 되돌렸다.)
 """
 from . import Decision, get, pick
 
-NAME = "dc-test-context-1"
+NAME = "dc-test-agent-context-1"
 KEY = "agent.context_pressure"
 
 
 def decide(ctx) -> Decision:
-    assert ctx.purpose == "context_policy"
+    assert ctx.purpose == "agent_context"
     p = get(ctx, KEY)
     if p is None:
         return Decision(NAME, ctx.id, pick(ctx, "KEEP"),
                         "맥락 압력을 모른다(또는 낡았다) -- 모르는 것으로 맥락을 줄이지 않는다", (KEY,))
     if p == "AT_CONTEXT_LIMIT":
-        return Decision(NAME, ctx.id, pick(ctx, "DROP", "COMPRESS"), "창에 닿았다", (KEY,))
+        return Decision(NAME, ctx.id, pick(ctx, "REDUCE"), "창에 닿았다", (KEY,))
     if p == "ABOVE_COMPACTION_THRESHOLD":
-        return Decision(NAME, ctx.id, pick(ctx, "COMPRESS", "DROP"), "런타임 압축 문턱을 넘었다", (KEY,))
+        return Decision(NAME, ctx.id, pick(ctx, "COMPACT", "REDUCE"), "런타임 압축 문턱을 넘었다", (KEY,))
     return Decision(NAME, ctx.id, pick(ctx, "KEEP"), f"맥락 압력 {p}", (KEY,))
