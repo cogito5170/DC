@@ -1,0 +1,219 @@
+
+====================================================================================================
+1. 같은 State, 다른 목적 -> 다른 투영
+====================================================================================================
+dc-0f4f74d762bafc09  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+  session.token_budget_pressure          HIGH                         INFERRED       FRESH     age=0s    
+  session.context_pressure               MEDIUM                       INFERRED       FRESH     age=0s    
+  session.task_complexity                LOW                          INFERRED       FRESH     age=0s    
+  session.answer_reliability             HIGH                         INFERRED       FRESH     age=0s    
+  session.correction_rate                LOW                          INFERRED       FRESH     age=0s    
+  agent.context_pressure                 BELOW_COMPACTION_THRESHOLD   INFERRED       FRESH     age=0s    
+  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
+  constraints: max_context_chars <= 3000
+  actions: KEEP, COMPRESS, SUMMARIZE, DROP, DEFER, (COMPACT: runtime_compaction 없음)
+
+dc-7867ddce8b583948  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+  runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
+  runtime.runtime_reliability            NO_FAILURE_OBSERVED          INFERRED       FRESH     age=0s    
+  session.latency_pressure               HIGH                         INFERRED       FRESH     age=0s    
+  session.answer_reliability             HIGH                         INFERRED       FRESH     age=0s    
+  agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
+  constraints: max_cost_usd <= 0.1, max_latency_ms <= 5000
+  actions: KEEP_PROVIDER, SWITCH_PROVIDER, RETRY, STOP
+
+dc-c5c9577709b927e8  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
+  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
+  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=0s    
+  tool[Edit].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=5s    
+  tool[Grep].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=8s    
+  tool[Read].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=7s    
+  tool[WebFetch].tool_execution_health   UNRESOLVED_FAILURES          INFERRED       FRESH     age=2s    
+  task.progress_state                    None                         NOT_APPLICABLE PERMANENT age=0s      ✗
+  task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=0s    
+  agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
+  runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
+  constraints: max_retries <= 2
+  actions: CONTINUE, RETRY, (ESCALATE: human_reviewer 없음), STOP
+
+
+====================================================================================================
+2. Freeze -- 내용 해시 id. 같은 입력이면 같은 id, State 가 바뀌어도 앞 문맥은 그대로
+====================================================================================================
+  두 번 지음: dc-a27a7839003146d7 == dc-a27a7839003146d7 -> True
+  LLM 제안(FAILING) 뒤: dc-a27a7839003146d7 -> 같은가 True (제안은 State 가 아니다)
+  verify(): True
+
+====================================================================================================
+3. 45 분 뒤(새 관측 없음) -- STALE 은 지우지 않고 표시하며, 정책에는 '모름' 으로 간다
+====================================================================================================
+dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
+  agent.execution_health                 UNRESOLVED_FAILURES          STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  tool[Bash].tool_execution_health       RECOVERED_FAILURES           STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  tool[Edit].tool_execution_health       NO_FAILURE_OBSERVED          STALE          STALE     age=2705s   ✗ [STALE_TTL]
+  tool[Grep].tool_execution_health       NO_FAILURE_OBSERVED          STALE          STALE     age=2708s   ✗ [STALE_TTL]
+  tool[Read].tool_execution_health       NO_FAILURE_OBSERVED          STALE          STALE     age=2707s   ✗ [STALE_TTL]
+  tool[WebFetch].tool_execution_health   UNRESOLVED_FAILURES          STALE          STALE     age=2702s   ✗ [STALE_TTL]
+  task.progress_state                    None                         NOT_APPLICABLE PERMANENT age=2700s   ✗
+  task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=2700s 
+  agent.resource_state                   WITHIN_BUDGET                STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  runtime.rate_limit_state               AVAILABLE                    STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  missing_required: agent.execution_health, runtime.rate_limit_state
+  actions: CONTINUE, RETRY, (ESCALATE: human_reviewer 없음), STOP
+
+====================================================================================================
+4. 정책으로 -- MS AdaptiveContext 에 DC 를 거쳐 넘기기
+====================================================================================================
+  지금:       snapshot 계획 budget=1500  DC 계획 budget=1500   (같다)
+  5 분 뒤, 운영자가 압력 상태에 max_age 120 s 를 건 목적(가정):
+    snapshot: token_budget_pressure=HIGH -> budget 1500  (압력 HIGH -> 예산 ×0.5 · COMPRESS · DROP · DEFER(우선순위>=2))
+    DC:       token_budget_pressure=None -> budget 3000  (압력 LOW/모름 -> 고정과 같다)
+
+====================================================================================================
+5. 기록 꼴(to_dict) -- provider_selection, 줄임
+====================================================================================================
+{
+ "id": "dc-9cd576f94f0346c7",
+ "digest": "9cd576f94f0346c7c4dda5b1e2a16f690d61644200078b7fa5baf6d7933277f2",
+ "purpose": "provider_selection",
+ "as_of": {
+  "ms": 1300000.0,
+  "sensor": 18550.0
+ },
+ "subject": {
+  "agent": "agent:demo:example",
+  "runtime": "runtime:demo:example",
+  "session": "session:s1",
+  "task": "task:demo:example",
+  "tool": [
+   "tool:demo:example:Bash",
+   "tool:demo:example:Edit",
+   "tool:demo:example:Grep",
+   "tool:demo:example:Read",
+   "tool:demo:example:WebFetch"
+  ]
+ },
+ "states": [
+  {
+   "key": "runtime.rate_limit_state",
+   "role": "runtime",
+   "entity": "runtime:demo:example",
+   "name": "rate_limit_state",
+   "source": "sensor",
+   "required": true,
+   "value": "AVAILABLE",
+   "status": "INFERRED",
+   "source_status": "INFERRED",
+   "freshness": "FRESH",
+   "age_ms": 0.0,
+   "ttl_ms": 300000,
+   "observed_at_ms": 18550.0,
+   "basis": "DEFINITIONAL",
+   "rule_id": "rate-limit-state-v1",
+   "rule_version": 1,
+   "evidence_refs": [
+    "runtime:demo:example/rate_limit_utilization@23"
+   ],
+   "reason": "사용률 0.62 < 1 (경고 문턱은 런타임 사건에 있으나 꼴 v2 에 안 담았다)",
+   "issues": []
+  },
+  {
+   "key": "runtime.runtime_reliability",
+   "role": "runtime",
+   "entity": "runtime:demo:example",
+   "name": "runtime_reliability",
+   "source": "sensor",
+   "required": true,
+   "value": "NO_FAILURE_OBSERVED",
+   "status": "INFERRED",
+   "source_status": "INFERRED",
+   "freshness": "FRESH",
+   "age_ms": 0.0,
+   "ttl_ms": 600000,
+   "observed_at_ms": 18550.0,
+   "basis": "DEFINITIONAL",
+   "rule_id": "runtime-reliability-v1",
+   "rule_version": 1,
+   "evidence_refs": [
+    "runtime:demo:example/api_error@23",
+    "runtime:demo:example/stop_reasons@23"
+   ],
+   "reason": "API 오류 보고 없음(보고된 null) · 멈춤 사유 11 개 정상 -- 신뢰가 증명된 것은 아니다",
+   "issues": []
+  }
+ ],
+ "constraints": [
+  {
+   "name": "max_cost_usd",
+   "op": "<=",
+   "value": 0.1,
+   "source": "operator"
+  }
+ ],
+ "capabilities": {
+  "alternate_provider": true,
+  "retrieve_tool": true,
+  "retry_budget": true
+ },
+ "actions": [
+  {
+   "name": "KEEP_PROVIDER",
+   "available": true,
+   "requires": [],
+   "missing": [],
+   "meaning": ""
+  },
+  {
+   "name": "SWITCH_PROVIDER",
+   "available": true,
+   "requires": [
+    "alternate_provider"
+   ],
+   "missing": [],
+   "meaning": "다른 provider 가 설정되어 있어야"
+  },
+  {
+   "name": "RETRY",
+   "available": true,
+   "requires": [
+    "retry_budget"
+   ],
+   "missing": [],
+   "meaning": "재시도 한도가 남아 있어야"
+  },
+  {
+   "name": "STOP",
+   "available": true,
+   "requires": [],
+   "missing": [],
+   "meaning": ""
+  }
+ ],
+ "validity": {
+  "complete": true,
+  "usable": [
+   "runtime.rate_limit_state",
+   "runtime.runtime_reliability",
+   "session.latency_pressure",
+   "session.answer_reliability",
+   "agent.resource_state"
+  ],
+  "uncertain": [],
+  "not_applicable": [],
+  "missing_required": [],
+  "rejected": []
+ },
+ "provenance": {
+  "builder": "dc-builder-1",
+  "purpose_version": "purpose-provider-1",
+  "sources": {
+   "ms": {
+    "model": "usage-model-1"
+   },
+   "sensor": {
+    "config": "demo-v1",
+    "rules": "completion-state-v1@1,context-pressure-v1@1,execution-health-v1@1,progress-state-v1@1,rate-limit-state-v1@1,resource-pressure-v1@1,resource-state-v1@1,runtime-reliability-v1@1,tool-execution-health-v1@1"
+   }
+  }
+ }
+}

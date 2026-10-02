@@ -1,0 +1,174 @@
+"""진짜 State 층에 붙여 본다 -- Sensor(llmsensor.state.StateEngine) · MS(usage_model). 옆 저장소가 없으면 건너뛴다.
+
+    DC_SENSOR_PATH (기본 ../Sensor) · DC_MS_PATH (기본 ../MS)
+"""
+import importlib
+import os
+import sys
+import unittest
+from pathlib import Path
+
+from dc import DecisionContextBuilder, MSUsageSource, SensorSource, policy_state
+
+ROOT = Path(__file__).resolve().parents[1]
+SENSOR = Path(os.environ.get("DC_SENSOR_PATH", ROOT.parent / "Sensor"))
+MS = Path(os.environ.get("DC_MS_PATH", ROOT.parent / "MS"))
+
+
+def _load(path: Path, mod: str):
+    if not (path / mod.split(".")[0]).is_dir():
+        return None
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+    try:
+        return importlib.import_module(mod)
+    except Exception:
+        return None
+
+
+demo = _load(SENSOR, "eval.state_demo")
+msmanager, msusage, mspolicy = (_load(MS, m) for m in ("ms.manager", "ms.usage_model", "ms.policy"))
+
+
+@unittest.skipIf(demo is None, f"Sensor 저장소가 없다: {SENSOR}")
+class WithSensor(unittest.TestCase):
+    def setUp(self):
+        from llmsensor.state import StateEngine, from_telemetry
+        self.E = StateEngine(demo.CFG).ingest_all(from_telemetry(demo.build() + [demo.end_record(None)]))
+        self.src = SensorSource(self.E)
+        self.b = DecisionContextBuilder([self.src])
+        self.now = self.E.ledgers[demo.RUN].last_at
+        self.subj = self.src.subject(demo.RUN)
+
+    def ctx(self, now=None):
+        return self.b.build("execution_control", self.subj, now_ms=self.now if now is None else now,
+                            capabilities={"retry_budget": True})
+
+    def test_values_match_sensor_and_nothing_is_out_of_domain(self):
+        c = self.ctx()
+        self.assertEqual(c.state("agent.execution_health").value, "UNRESOLVED_FAILURES")
+        self.assertEqual(c.state("tool[WebFetch].tool_execution_health").value, "UNRESOLVED_FAILURES")
+        self.assertEqual(c.state("task.completion_state").freshness, "PERMANENT")
+        self.assertFalse([s.key for s in c.states for i in s.issues if i.code == "OUT_OF_DOMAIN"])
+        sensor_dc = self.E.decision_context(demo.RUN, now=self.now)       # Sensor 의 손으로 짠 결정 문맥과 같은 값
+        self.assertEqual(c.state("agent.execution_health").value, sensor_dc["execution"]["health"]["value"])
+        # Sensor 는 NOT_APPLICABLE 을 문맥에서 지우고 목록으로만 남긴다. DC 는 상태로 남긴다(지우지 않는다)
+        self.assertIn("task.progress", sensor_dc["not_applicable"])
+        self.assertEqual(c.state("task.progress_state").status, "NOT_APPLICABLE")
+
+    def test_evidence_refs_trace_back_to_observations(self):
+        c = self.ctx()
+        v = c.state("agent.execution_health")
+        self.assertTrue(v.evidence_refs)
+        self.assertTrue(set(v.evidence_refs) <= set(self.E.metrics))
+        self.assertTrue(self.E.observation_ids(v.entity, v.name))
+
+    def test_45_minutes_later_is_stale_but_completion_is_permanent(self):
+        c = self.ctx(self.now + 45 * 60_000)
+        self.assertEqual(c.state("agent.execution_health").status, "STALE")
+        self.assertIsNone(c.value("agent.execution_health"))
+        self.assertEqual(c.state("task.completion_state").status, "INFERRED")
+
+    def test_llm_proposal_does_not_change_the_context(self):
+        before = self.ctx()
+        self.E.propose(f"agent:{demo.RUN}", "execution_health", "FAILING", "llm", "I think it is failing")
+        self.assertEqual(self.ctx().digest, before.digest)
+
+    def test_no_raw_measurement_values_leak(self):
+        import json
+        s = json.dumps(self.ctx().to_dict(), ensure_ascii=False)
+        for raw in ("130000", "180000", "cache_read_input_tokens", "input_tokens"):
+            self.assertNotIn(raw, s)
+
+
+@unittest.skipIf(msmanager is None or msusage is None, f"MS 저장소가 없다: {MS}")
+class WithMS(unittest.TestCase):
+    def setUp(self):
+        self.clock = [1000.0]
+        self.m = msmanager.StateManager(clock=lambda: self.clock[0])
+        self.sid = msusage.open_session(self.m, "s1", {"token_budget": 20000, "context_budget": 4000,
+                                                       "latency_budget_ms": 8000})
+        sig = {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 2000,
+               "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
+               "interaction.proposal_invalid": 0, "interaction.walp_denies": 0, "task.matched_rows": 5}
+        for k, v in sig.items():
+            self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": k, "value": v, "ts": self.clock[0]})
+        self.m.ingest({"source": "user", "entity": self.sid, "signal": "outcome.user_correction", "value": False,
+                       "ts": self.clock[0]})
+        self.src = MSUsageSource(self.m, msusage.MODEL_VERSION)
+        self.b = DecisionContextBuilder([self.src])
+
+    def build(self, purpose="context_policy"):
+        return self.b.build(purpose, {"session": self.sid}, now_ms=self.src.now_ms())
+
+    def test_policy_state_equals_ms_snapshot_when_fresh(self):
+        ctx = self.build()
+        self.assertTrue(ctx.validity.complete)
+        st = policy_state(ctx, "session")
+        snap = msusage.snapshot(self.m, self.sid)
+        for k in ("token_budget_pressure", "context_pressure", "task_complexity", "answer_reliability",
+                  "correction_rate"):
+            self.assertEqual(st[k], snap[k], k)
+        self.assertEqual(st["token_budget_pressure"], "HIGH")
+        if mspolicy is not None:
+            sel = mspolicy.AdaptiveContext()
+            self.assertEqual(sel.plan(st, {})["params"], sel.plan(snap, {})["params"])
+
+    def test_evidence_is_telemetry_ids_not_values(self):
+        v = self.build().state("session.token_budget_pressure")
+        self.assertTrue(v.evidence_refs)
+        self.assertTrue(all(isinstance(r, str) and r.startswith("t") for r in v.evidence_refs))
+        self.assertEqual(v.basis, "OPERATOR_ASSUMED")      # MS 의 문턱은 손으로 둔 것
+
+    def test_stale_state_falls_back_to_fixed_policy_where_snapshot_does_not(self):
+        if mspolicy is None:
+            self.skipTest("ms.policy 없음")
+        from dc.purpose import CONTEXT_POLICY
+        strict = CONTEXT_POLICY.tightened("purpose-context-1-op120s",
+                                          {"session.token_budget_pressure": 120_000, "session.context_pressure": 120_000})
+        self.clock[0] += 300                                   # 5 분 동안 새 실행이 없다
+        ctx = self.b.build(strict, {"session": self.sid}, now_ms=self.src.now_ms())
+        st, snap = policy_state(ctx, "session"), msusage.snapshot(self.m, self.sid)
+        self.assertIsNone(st["token_budget_pressure"])
+        self.assertEqual(snap["token_budget_pressure"], "HIGH")   # MS 스냅숏은 낡았는지 보지 않는다
+        sel = mspolicy.AdaptiveContext()
+        self.assertEqual(sel.plan(st, {})["params"]["budget_chars"], mspolicy.BASE_CONTEXT["budget_chars"])
+        self.assertLess(sel.plan(snap, {})["params"]["budget_chars"], mspolicy.BASE_CONTEXT["budget_chars"])
+
+    def test_known_limit_config_input_ages_derived_state(self):
+        """MS 파생의 시각 = 입력 중 가장 오래된 것. 예산(설정)도 입력이라, 실행이 방금 있어도 세션을 연 시각으로 늙는다.
+        기본 목적은 max_age 를 안 줘서 영향이 없다 -- 엄한 목적을 MS 상태에 걸 때의 함정을 붙들어 둔다."""
+        from dc.purpose import CONTEXT_POLICY
+        self.clock[0] += 200
+        self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": "tokens.input_tokens", "value": 19500,
+                       "ts": self.clock[0]})
+        strict = CONTEXT_POLICY.tightened("p-op120s", {"session.token_budget_pressure": 120_000})
+        v = self.b.build(strict, {"session": self.sid}, now_ms=self.src.now_ms()).state("session.token_budget_pressure")
+        self.assertEqual(v.status, "STALE")
+        self.assertAlmostEqual(v.age_ms, 200_000)
+
+
+@unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")
+class BothSources(unittest.TestCase):
+    def test_provider_selection_from_two_state_layers(self):
+        from llmsensor.state import StateEngine, from_telemetry
+        E = StateEngine(demo.CFG).ingest_all(from_telemetry(demo.build() + [demo.end_record(None)]))
+        clock = [1000.0]
+        m = msmanager.StateManager(clock=lambda: clock[0])
+        sid = msusage.open_session(m, "s1", {"latency_budget_ms": 8000})
+        for k, v in {"latency.total_ms": 9000, "interaction.llm_calls": 2, "interaction.proposal_invalid": 0,
+                     "interaction.walp_denies": 0}.items():
+            m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
+        s, ms = SensorSource(E), MSUsageSource(m, msusage.MODEL_VERSION)
+        ctx = DecisionContextBuilder([s, ms]).build(
+            "provider_selection", {**s.subject(demo.RUN), "session": sid},
+            now_ms={"sensor": E.ledgers[demo.RUN].last_at, "ms": ms.now_ms()},
+            capabilities={"alternate_provider": True})
+        self.assertEqual(ctx.state("session.latency_pressure").value, "HIGH")
+        self.assertEqual(ctx.state("runtime.rate_limit_state").source, "sensor")
+        self.assertIn("SWITCH_PROVIDER", ctx.available_actions)
+        self.assertEqual(set(ctx.provenance.to_dict()["sources"]), {"sensor", "ms"})
+
+
+if __name__ == "__main__":
+    unittest.main()
