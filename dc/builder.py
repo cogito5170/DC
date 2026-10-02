@@ -4,8 +4,8 @@
         ↓  1. Select    목적이 부른 상태만 읽는다(역할 -> 실체). 소스 · 역할이 없어도 빼지 않고 UNKNOWN 으로 남긴다
         ↓  2. Filter    신선도를 **하나의 '지금'** 으로 다시 잰다. STALE · UNKNOWN 을 **지우지 않는다** -- 표시한다
         ↓  3. Validate  근거(provenance) · 권위(basis) · 일관성(값 집합 · 유효성과 값) · 시각. 못 넘으면 강등(INVALID)
-        ↓  4. Project   목적별 키("역할.상태")로 · 목적 순서대로. 제약 · 능력 · 행동(가능/불가능과 까닭)을 붙인다
-        ↓  5. Freeze    frozen dataclass + 내용 해시 id. 뒤에 State 가 바뀌어도 이 문맥은 안 바뀐다
+        ↓  4. Project   목적별 키("역할.상태")로 · 목적 순서대로 **core**(정책이 읽는 것)와 **provenance**(감사 · 재현)로 가른다
+        ↓  5. Freeze    frozen dataclass + 내용 해시(digest). 뒤에 State 가 바뀌어도 이 문맥은 안 바뀐다
     DecisionContext
 
 빌더가 하지 않는 것:
@@ -17,20 +17,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .model import (CONSTRAINT_OPS, FRESH, FUTURE_OBSERVATION, INCOHERENT, INVALID, NO_EVIDENCE, NO_RULE, NO_SOURCE,
-                    NOT_APPLICABLE, NOT_SCALAR, OUT_OF_DOMAIN, PERMANENT, SCALAR, SOURCE_ERROR, STALE,
+                    NOT_SCALAR, OUT_OF_DOMAIN, PERMANENT, SCALAR, SOURCE_ERROR, STALE,
                     STALE_AT_SOURCE, STALE_PURPOSE, STALE_TTL, STATUSES, UNAUTHORIZED_BASIS, UNBOUND_ROLE, UNKNOWN,
-                    UNTIMED, UNTIMED_REQUIRED, USABLE, Action, Constraint, Issue, Provenance, StateRecord, StateView,
-                    Subject, Validity)
+                    UNTIMED, UNTIMED_REQUIRED, USABLE, Constraint, Core, CoreState, Issue, Provenance, StateProvenance,
+                    StateRecord, Subject)
 from .purpose import PURPOSES, Purpose, PurposeError, StateRef, is_objective_word
 from .snapshot import freeze
 from .sources import SourceError, check_source
 
-BUILDER_VERSION = "dc-builder-1"
+BUILDER_VERSION = "dc-builder-2"     # -2: core/provenance 분리 · reason 뺌 · 키별 allow_stale (PC-07 · CMD-D6)
 
 
 @dataclass
 class _Sel:
-    """빌드 중의 상태 하나(가변 -- Freeze 에서 StateView 로 굳는다)."""
+    """빌드 중의 상태 하나(가변 -- Project 에서 CoreState + StateProvenance 로 굳는다)."""
     ref: StateRef
     entity: str
     tail: "str | None"
@@ -71,14 +71,16 @@ class DecisionContextBuilder:
             self.filter(s, nows.get(s.ref.source))
         for s in sel:
             self.validate(s)
-        states, validity = self.project(P, sel)
+        core_states, prov_states = self.project(P, sel)
         cons = self._constraints(P, constraints)
         caps = self._capabilities(capabilities)
-        actions = self._actions(P, dict(caps))
-        prov = Provenance(BUILDER_VERSION, P.version,
+        avail, missing = self._actions(P, dict(caps))
+        core = Core(P.name, P.version, tuple(sorted(nows.items())), subj.roles, core_states, cons, avail)
+        prov = Provenance(BUILDER_VERSION,
                           tuple((n, tuple(sorted((k, str(v)) for k, v in self.sources[n].versions().items())))
-                                for n in sorted({r.source for r in P.refs}) if n in self.sources))
-        return freeze(P.name, tuple(sorted(nows.items())), subj.roles, states, cons, caps, actions, validity, prov)
+                                for n in sorted({r.source for r in P.refs}) if n in self.sources),
+                          caps, missing, prov_states)
+        return freeze(core, prov, P)
 
     # ---- 1. Select ------------------------------------------------------------------------------------------
     def select(self, P: Purpose, subj: Subject, nows: dict) -> "list[_Sel]":
@@ -88,7 +90,7 @@ class DecisionContextBuilder:
             if ent is None or ent == ():
                 if ent == () and not ref.required:
                     continue        # 펼칠 실체가 하나도 없다(예: 도구를 안 썼다) -- 모르는 상태가 아니라 없는 실체다
-                rec = StateRecord(ref.source, "", ref.name, None, UNKNOWN, "OBSERVED", reason="subject 에 역할이 없다")
+                rec = StateRecord(ref.source, "", ref.name, None, UNKNOWN, "OBSERVED")
                 out.append(_Sel(ref, "", None, rec, issues=[Issue(UNBOUND_ROLE, ref.role)]))
                 continue
             for e, tail in ([(x, x.rsplit(":", 1)[-1]) for x in ent] if isinstance(ent, tuple) else [(ent, None)]):
@@ -98,15 +100,15 @@ class DecisionContextBuilder:
     def _read(self, ref, entity, tail, now) -> _Sel:
         src = self.sources.get(ref.source)
         if src is None:
-            rec = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED", reason="소스가 없다")
+            rec = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED")
             return _Sel(ref, entity, tail, rec, issues=[Issue(NO_SOURCE, ref.source)])
         try:
             rec = src.read(entity, ref.name, now)
         except Exception as e:   # 소스가 터진 것도 '모른다' 이다 -- 추정으로 메우지 않는다
-            rec = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED", reason="소스 예외")
+            rec = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED")
             return _Sel(ref, entity, tail, rec, issues=[Issue(SOURCE_ERROR, f"{type(e).__name__}: {e}")])
         if (rec.entity, rec.name, rec.source) != (entity, ref.name, ref.source):
-            bad = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED", reason="소스가 다른 상태를 줬다")
+            bad = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED")
             return _Sel(ref, entity, tail, bad,
                         issues=[Issue(SOURCE_ERROR, f"물은 것 {entity}.{ref.name}, 받은 것 {rec.entity}.{rec.name}")])
         return _Sel(ref, entity, tail, rec)
@@ -177,23 +179,21 @@ class DecisionContextBuilder:
     # ---- 4. Project -----------------------------------------------------------------------------------------
     @staticmethod
     def project(P: Purpose, sel: "list[_Sel]"):
-        views = []
+        """core: 키별 [값, 유효성] -- 값은 쓸 수 있을 때만(목적이 allow_stale 을 선언한 키는 STALE 도). provenance: 나머지."""
+        core, prov = [], []
         for s in sel:
             r = s.rec
-            views.append(StateView(
-                key=s.ref.key(s.tail), role=s.ref.role, entity=s.entity, name=s.ref.name, source=s.ref.source,
-                required=s.ref.required, value=s.value, status=s.status, source_status=r.status,
-                freshness=s.freshness, age_ms=s.age_ms, ttl_ms=s.ttl_ms, observed_at_ms=r.observed_at_ms,
-                basis=r.basis, rule_id=r.rule_id, rule_version=r.rule_version, evidence_refs=tuple(r.evidence_refs),
-                reason=r.reason, issues=tuple(s.issues)))
-        usable = tuple(v.key for v in views if v.usable)
-        unc = tuple(f"{v.key}={v.status}" for v in views if v.status in (UNKNOWN, STALE, INVALID))
-        na = tuple(v.key for v in views if v.status == NOT_APPLICABLE)
-        missing = tuple(v.key for v in views if v.required and not v.usable and v.status != NOT_APPLICABLE)
-        rejected = tuple(f"{v.key}:{','.join(i.code for i in v.issues)}" for v in views
-                         if v.issues and v.status != v.source_status)
-        return views, Validity(complete=not missing, usable=usable, uncertain=unc, not_applicable=na,
-                               missing_required=missing, rejected=rejected)
+            key = s.ref.key(s.tail)
+            show = s.status in USABLE or (s.status == STALE and s.ref.allow_stale)
+            value = s.value if show else None
+            core.append(CoreState(key, value, s.status))
+            prov.append(StateProvenance(
+                key=key, role=s.ref.role, entity=s.entity, name=s.ref.name, source=s.ref.source, basis=r.basis,
+                rule_id=r.rule_id, rule_version=r.rule_version, evidence_refs=tuple(r.evidence_refs),
+                observed_at_ms=r.observed_at_ms, ttl_ms=s.ttl_ms, permanent=bool(r.permanent), source_status=r.status,
+                issues=tuple(s.issues), withheld=None if show else s.value))
+        # 키 순으로 -- 직렬화의 키 순서와 상관없이 되살린 문맥이 같다
+        return tuple(sorted(core, key=lambda c: c.key)), tuple(sorted(prov, key=lambda p: p.key))
 
     # ---- 보조 -----------------------------------------------------------------------------------------------
     def _purpose(self, purpose) -> Purpose:
@@ -245,8 +245,9 @@ class DecisionContextBuilder:
 
     @staticmethod
     def _actions(P: Purpose, caps: dict) -> tuple:
-        out = []
+        """(가능한 행동 이름들, ((못 하는 행동, 모자란 능력들), …)) -- 상태가 아니라 능력으로만."""
+        avail, missing = [], []
         for a in P.actions:
-            missing = tuple(r for r in a.requires if not caps.get(r))
-            out.append(Action(a.name, not missing, tuple(a.requires), missing, a.meaning))
-        return tuple(out)
+            lack = tuple(r for r in a.requires if not caps.get(r))
+            (missing.append((a.name, lack)) if lack else avail.append(a.name))
+        return tuple(avail), tuple(sorted(missing))

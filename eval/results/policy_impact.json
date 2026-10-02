@@ -1,7 +1,7 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "8e5ec694f7c2d0d8",
+ "decision_digest": "bb1e8b86c8a0a504",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
@@ -9,7 +9,7 @@
    "human_reviewer": true
   },
   "external_labels": "swe_lite_20240620_sweagent_claude35sonnet_results.json",
-  "builder": "dc-builder-1",
+  "builder": "dc-builder-2",
   "purposes": {
    "context_policy": "purpose-context-2",
    "provider_selection": "purpose-provider-3",

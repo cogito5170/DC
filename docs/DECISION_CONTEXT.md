@@ -64,33 +64,52 @@ State 소스들 ──► 1 Select ──► 2 Filter ──► 3 Validate ─�
 `session.context_pressure`(손으로 둔 0.9 · 0.6 띠)는 **다른 상태**이고 키가 다르다. 같은 키를 두 소스에서 부르는 목적은
 명세 단계에서 거절된다.
 
-## 4. 데이터 꼴 (`dc/model.py`)
+## 4. 데이터 꼴 (`dc/model.py` · `dc/project.py`) -- core 와 provenance (2026-10-02, baseline PC-07 · BD-08)
 
-JSON 부터 설계하지 않았다 -- 의미 객체가 먼저이고 JSON 은 `to_dict()` 의 출력일 뿐이다.
+JSON 부터 설계하지 않았다 -- 의미 객체가 먼저이고 JSON 은 `to_dict()` 의 출력일 뿐이다. **저장하는 것은 digest · core · provenance 셋뿐이다.**
 
 ```
 DecisionContext
-    id · digest          내용 해시(같은 입력 -> 같은 id, 고치면 verify() False)
-    purpose              목적 이름
-    as_of                {소스: 지금 ms}  -- 소스마다 시각 기준이 다를 수 있다(Sensor: monotonic_ms 가능, MS: 초 -> ms)
-    subject              {역할: 실체 | 실체들}
-    states[]             StateView
-    constraints[]        Constraint(name, op ∈ <= >= == in, value, source)
-    capabilities         {이름: 스칼라}
-    actions[]            Action(name, available, requires, missing, meaning)
-    validity             complete · usable · uncertain · not_applicable · missing_required · rejected
-    provenance           builder 판본 · 목적 판본 · 소스별 판본(규칙 · 설정 · 모형)
-
-StateView
-    key · role · entity · name · source · required
-    value                소스가 준 그대로(STALE · INVALID 여도 남긴다 -- 설명용). 쓸지는 usable 이 정한다
-    status               DC 판정 뒤 유효성       source_status   소스가 말한 유효성
-    freshness · age_ms · ttl_ms(실제 적용) · observed_at_ms
-    basis · rule_id · rule_version · evidence_refs · reason
-    issues[]             DC 가 찾은 문제
+  digest              core + provenance 정준 JSON 의 sha256.   id = "dc-" + 앞 16 자 (투영)
+  core                ← 정책이 읽는 것. 정책 쪽으로 보낸다(ctx.core_dict())
+    purpose · purpose_version
+    as_of             {소스: 지금 ms}  -- 소스마다 시각 기준이 다를 수 있다(Sensor: monotonic_ms 가능, MS: 초 -> ms)
+    subject           {역할: 실체 | 실체들}
+    states            {키: [값 | null, 유효성]}   값은 쓸 수 있을 때만 -- 목적이 그 키에 allow_stale 을 선언했으면 STALE 도
+    constraints       [Constraint(name, op ∈ <= >= == in, value, source)]
+    actions           [가능한 행동 이름]
+  provenance          ← 감사 · 재현 · explain. 같은 저장소에 두고 id 로 가리킨다
+    states[]          key · role · entity · name · source · basis · rule_id · rule_version · evidence_refs(참조만)
+                      · observed_at_ms · ttl_ms(적용한 TTL, 입력 기록) · permanent · source_status · issues
+                      · withheld(core 에 싣지 않은 소스 값 -- 설명용. core 에 값이 있으면 null)
+    capabilities      {이름: 스칼라}          missing   {못 하는 행동: [모자란 능력]}
+    builder · sources(소스별 판본)
+  (투영 -- 저장하지 않는다)
+    StateView = core + provenance + age_ms(as_of − observed_at) · freshness · required(목적 명세)
+    validity  = complete · usable · uncertain · not_applicable · missing_required · rejected
+    actions   = 목적 명세의 행동 전부(가능 · 못 함 + 까닭)
+    reuse_key = "rk-" + (as_of 를 뺀 core) 의 해시 -- 결정 재사용 열쇠(BD-37)
 ```
 
-`ctx.value(key)` 와 `policy_state(ctx, role)` 은 **쓸 수 있을 때만** 값을 준다. 나머지는 None(=모름)이다.
+- **`reason` 은 없다.** 원 수치가 새어 들고(I1) 크기가 core 만큼이었다(baseline SCHEMA §4.4). 사람이 읽을 까닭은 소스의 explain 에서.
+- **값은 한 번만 산다:** 쓸 수 있으면 core 에, 아니면 provenance 의 `withheld` 에(시험이 본다).
+- **낡은 값은 둘 다 명시해야 쓰인다(CMD-D6):** 목적 명세의 키별 `allow_stale=True`(core 에 실린다) **그리고** 정책의 `ctx.value(key, allow_stale=True)`.
+  명세에 없는 키는 정책이 불러도 None 이다. UNKNOWN · INVALID 는 늘 None.
+- **투영에는 지은 그 판본의 명세가 필요하다.** 빌더가 붙여 둔 명세(`ctx.spec`, 해시 · 직렬화 밖)를 쓰고, 기록에서 되살렸으면 등록된 목적 중
+  이름과 판본이 **둘 다** 맞는 것을 찾는다. 판본이 다르면 투영하지 않는다(LookupError) -- core 읽기(`ctx.value`)는 명세 없이도 된다.
+- core · provenance 의 상태는 키 순으로 저장한다 -- 직렬화의 키 순서와 상관없이 되살린 문맥이 같다.
+
+크기(`examples/demo_output.txt` 6 절, Sensor §40 시연 + MS 세션, 정준 JSON):
+
+| 목적 | core | 전체 | core 비율 | (PC-07 전 전체, baseline §4.4) |
+|---|---|---|---|---|
+| context_runtime | 803 B | 3,603 B | 22.3 % | -- |
+| context_policy | 860 B | 4,131 B | 20.8 % | 5,634 B |
+| prompt_policy | 820 B | 3,701 B | 22.2 % | 5,144 B |
+| provider_selection | 809 B | 3,745 B | 21.6 % | 4,401 B |
+| execution_control | 1,156 B | 6,641 B | 17.4 % | 7,205 B |
+
+baseline 이 잰 core(약 10 %)보다 크다 -- 그쪽은 키별 [값, 유효성] 만 셌고, 여기 core 에는 id · as_of · subject(도구 실체 목록) · 제약 · 가능 행동이 함께 있다.
 
 ## 5. 목적 -- 하나의 고정 꼴이 아니라 목적별 투영 (`dc/purpose.py`)
 
@@ -135,9 +154,10 @@ Objective   토큰을 줄여라, 단 품질 >= 문턱         (Policy 소유 -- 
 | I4 | 결정 문맥은 만든 뒤 바뀌지 않는다 | `I4_Immutable` -- frozen, 뒤의 State 변화가 앞 문맥에 안 닿음, `object.__setattr__` 변조를 `verify()` 가 잡음, 고친 기록은 `from_dict` 가 거절 |
 | I5 | 쓸 수 있는 상태는 모두 근거로 되짚힌다 | `I5_Traceable` -- 근거 · 규칙 없는 상태는 INVALID. 통합: 근거 참조가 Sensor 지표 id 이고 `observation_ids` 로 관측까지 펼쳐짐, MS 는 텔레메트리 id |
 | I6 | 결정 문맥은 정책을 정하지 않는다 | `I6_NoPolicyInside` -- 목적함수 · 고른 행동 칸 없음, 목적함수 낱말 제약 거절(명세를 우회해도 빌더가 막음), 행동은 상태와 무관, 패키지가 정책 · 프롬프트 · provider 를 import 안 함 |
+| I8 | 정책이 읽는 것(core)과 감사 · 재현(provenance)을 섞지 않는다 · `reason` 없음 (PC-07) | `CoreProvenance` -- core 칸 고정, 쓸 수 없는 값은 core 에 없음, 값은 한 번만, reuse_key 는 as_of 를 뺌, 판본 다른 명세로 투영 안 함, provenance 도 digest 가 덮음. 변이 8 가지 빨강 · 무해 대조 초록 |
 | I7 | LLM 출력은 결정 문맥의 상태를 고치지 못한다 | `I7_LLMCannotWrite` -- 권위 없는 소스 등록 거절, 쓰는 메서드 없음, ESTIMATE 근거 거절. 통합: Sensor `propose()` 뒤에도 digest 가 같다 |
 
-**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지(배선 뒤 리더 3 · SensorSource 4 · PC-08 로 옮긴 것 7 가지 더) -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
+**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지(배선 뒤 리더 3 · SensorSource 4 · PC-08 로 옮긴 것 7 · PC-07 8 가지 더) -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
 STALE 로 안 바꿈 · 소스 STALE 을 되살림 · 다리가 STALE 값을 넘김 · frozen 끔 · digest 가 상태를 안 봄 · 근거 없음을 받음 ·
 목적함수 낱말을 받음 · 행동을 상태로 거름 · 권위 없는 소스 등록 · ESTIMATE 를 권위로 · 비스칼라 통과 · 값 집합 검사 끔 ·
 미래 관측 받음 · 목적 밖 상태를 끼움 -- 모두 빨개진다. 무해 대조(주석만 바꿈)는 초록으로 남는다. 처음 돌렸을 때
@@ -215,7 +235,7 @@ baseline 이 이 저장소를 결정 문맥의 기준 구현으로 정했다(BD-
 
 | Sensor 에서 | 여기서 |
 |---|---|
-| `allow_stale` | `ctx.value(key, allow_stale=True)` -- **정책이 명시해야만**, STALE 만 풀린다(UNKNOWN · INVALID · NOT_APPLICABLE 은 그대로 None) |
+| `allow_stale` | 목적 명세의 키별 `allow_stale` **그리고** `ctx.value(key, allow_stale=True)` -- 둘 다 명시해야 STALE 값이 쓰인다(CMD-D6 · PC-07 에서 키별 선언으로 고침) |
 | `ContextStore` · `explain(context_id)` | `dc.ContextStore`(put · get · dump · load, 변조 거절). 근거 사슬은 문맥마다 복사하지 않는다(BD-05 의 단점, BD-06) -- `evidence_refs` 로 소스에서 펼친다 |
 | 목적 넷 | DC 이름으로(BD-30). `WAIT` 을 `provider_selection` 에 더했다. `optimize_llm_request`(목적 셋의 합)는 옮기지 않았다 |
 | 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-1`) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
@@ -244,8 +264,7 @@ Sensor 판과 다른 것(같은 결정이 아니다): 끝난 실행에서 CONTIN
   붙든다). 고치려면 MS 쪽에서 설정 입력을 시각 계산에서 빼야 한다 -- DC 가 소스의 시각을 다시 해석하지 않는다.
 - MS usage model 의 속성에는 TTL 이 없다 -> MS 상태는 신선도가 늘 FRESH(나이는 붙는다). 낡음 판정이 필요하면 목적의
   max_age 가 유일한 길이다(위 한계와 함께).
-- `reason` 문자열 안의 수(예: `사용률 0.62 < 1`, `맥락 137,000 < 144,000`)는 남는다 -- Sensor `decision_context()` 와 같은
-  예외다. 정책은 `reason` 을 해석하지 않는다(사람 · 로그용).
+- `reason` 은 PC-07 로 뺐다. 문제(`issues`)의 `detail` 에는 나이 · 시각 같은 수가 남는다 -- provenance 쪽이고 정책은 읽지 않는다.
 - 두 소스의 '같은 현상' 을 맞대어 보는 교차 일관성 검사는 없다(예: Sensor `completion_state=ENDED` 인데 MS 가 아직 진행 중).
   어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다. 한 소스 안에서도 마찬가지다: 실제 기록에서 FRESH 인
   `execution_health` 가 STALE 인 도구 상태를 근거로 삼는 것을 봤다(7.1) -- 집계의 신선도는 구성 요소의 신선도를 물려받지 않는다.

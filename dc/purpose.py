@@ -36,6 +36,7 @@ class StateRef:
     max_age_ms: "float | None" = None   # 소스 TTL 보다 엄한 신선도. None = 소스 TTL 을 따른다
     allowed_basis: tuple = DEFAULT_ALLOWED_BASIS
     values: "tuple | None" = None       # 값 집합을 목적이 못 박고 싶을 때. None = 소스가 아는 값 집합
+    allow_stale: bool = False           # 이 키의 STALE 값을 core 에 싣는다(정책이 낡은 값을 쓰겠다고 명세가 선언, CMD-D6)
 
     def key(self, tail: "str | None" = None) -> str:
         return f"{self.role}[{tail}].{self.name}" if tail else f"{self.role}.{self.name}"
@@ -82,11 +83,16 @@ class Purpose:
     def with_(self, **kw) -> "Purpose":
         return replace(self, **kw)
 
-    def tightened(self, version: str, max_age_ms: dict) -> "Purpose":
-        """운영자 가정으로 신선도를 더 엄하게 한 복제본. 판본을 반드시 새로 준다."""
+    def tightened(self, version: str, max_age_ms: "dict | None" = None, allow_stale: tuple = ()) -> "Purpose":
+        """운영자 가정으로 신선도를 더 엄하게 하거나 키별로 낡은 값을 허락한 복제본. 판본을 반드시 새로 준다."""
         if version == self.version:
             raise PurposeError("명세를 바꾸면 판본을 올린다")
-        refs = tuple(replace(r, max_age_ms=max_age_ms.get(r.key(), r.max_age_ms)) for r in self.refs)
+        max_age_ms = max_age_ms or {}
+        unknown = set(allow_stale) - {r.key() for r in self.refs}
+        if unknown:
+            raise PurposeError(f"{self.name}: 없는 키에 allow_stale {sorted(unknown)}")
+        refs = tuple(replace(r, max_age_ms=max_age_ms.get(r.key(), r.max_age_ms),
+                             allow_stale=r.allow_stale or r.key() in allow_stale) for r in self.refs)
         return replace(self, version=version, refs=refs)
 
 

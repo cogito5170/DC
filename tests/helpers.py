@@ -19,10 +19,10 @@ LEVELS = ("HIGH", "MEDIUM", "LOW")
 
 
 def rec(source, entity, name, value, status="INFERRED", *, at=NOW - MIN, ttl=10 * MIN, basis="DEFINITIONAL",
-        evidence=None, rule=None, permanent=False, reason="시험"):
+        evidence=None, rule=None, permanent=False):
     ev = (f"{entity}/{name}_metric@1",) if evidence is None else tuple(evidence)
     return StateRecord(source, entity, name, value, status, basis, rule_id=rule if rule is not None else name,
-                       rule_version=1, evidence_refs=ev, reason=reason, observed_at_ms=at, ttl_ms=ttl,
+                       rule_version=1, evidence_refs=ev, observed_at_ms=at, ttl_ms=ttl,
                        permanent=permanent)
 
 
