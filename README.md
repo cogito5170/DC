@@ -66,7 +66,7 @@ policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이
 목적 넷: `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 50 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 49 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
 ```
 
