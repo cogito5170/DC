@@ -1,4 +1,4 @@
-# 정책 쓸모 -- 결정 문맥이 결정을 바꾸나 (2026-10-02, baseline PC-08 · PC-07 · BD-58 · CMD-D12 뒤 다시 잼)
+# 정책 쓸모 -- 결정 문맥이 결정을 바꾸나 (2026-10-02, baseline PC-08 · PC-07 · BD-58 · CMD-D12 · CMD-D14 뒤 다시 잼)
 
 원자료: [`results/policy_impact.json`](results/policy_impact.json) · 스크립트: [`policy_impact.py`](policy_impact.py).
 입력: Sensor 의 실제 레코드 301 실행(cc_stream 12 · Claude Code JSONL 1 · SWE-agent 288) + SWE-bench Lite 외부 라벨.
@@ -8,19 +8,38 @@
 
 ## 결과
 
-| | Sensor 판 (`llmsensor/decision` + `reference-*-v1`) | DC 판 (`dc` + `dc-test-*-2`, CMD-D12 뒤) |
+| | Sensor 판 (`llmsensor/decision` + `reference-*-v1`) | DC 판 (`dc` + `dc-test-*`, 실행 -3 · CMD-D14 뒤, Sensor execution-health-v3) |
 |---|---|---|
 | 결정론(두 번 돌려 해시 같음) | 예 | 예 |
 | 평가점 | 57,873 | 57,873 |
 | 결정 관련 문맥 변화 | 639 | 3,071 (BD-58 전 3,080 -- 맥락 목적이 `agent.execution_health` 를 더는 싣지 않는다) |
-| 결정 변화 (맥락 · 공급자 · 실행) | 0 · 0 · 483 | 0 · 0 · **450** (CMD-D12 안전 기본 결정 뒤. 그 전 484 · 483 -- 아래) |
-| 안전 기본 결정으로 간 평가점 (맥락 · 공급자 · 실행, 각 19,592 중) | -- | 19,491 · 19,580 · 18,776 |
+| 결정 변화 (맥락 · 공급자 · 실행) | 0 · 0 · 483 | 0 · 0 · **729** (Sensor S19 `NO_TOOL_RUN_YET` 뒤. 그 전 450 · 484 · 483 -- 아래) |
+| 안전 기본 결정으로 간 평가점 (맥락 · 공급자 · 실행, 각 19,592 중) | -- | 19,491 · 19,580 · 18,475 (D14 전 18,776) |
 | `quality_state` → 결정 (state / used / alone) | 0.617 · 0.617 · 0.617 (287) | 0.617 · 0.617 · 0.617 (287) |
-| `execution_health` → 결정 (state / used) | 0.353 · 0.353, 혼자 바뀐 점 12 | 1.0 · 1.0 (18), 혼자 바뀐 점 0 (D12 전 0.353 -- 모름 ↔ 앎이 이제 ESCALATE ↔ 다른 행동이다) |
+| `execution_health` → 결정 (state / used) | 0.353 · 0.353, 혼자 바뀐 점 12 | 0.971 (306 중 297), 혼자 바뀐 점 0 (D14 전 1.0 (18) · D12 전 0.353) |
 | `completion_state` → 결정 | 1.0 (300) | 0.85 (300; D12 전 1.0 -- 기본값 ESCALATE 로 돌던 실행이 끝나 ESCALATE 로 남는 45 번은 결정이 안 바뀐다) |
 | 맥락 · 공급자 정책의 결정 변화 | 0 | 0 |
 
 ## 읽기
+
+- **450 -> 729 (2026-10-02, Sensor CMD-S19 `execution-health-v3` · DC CMD-D14 · BD-84).** 같은 301 실행을 셋으로 돌려 `decision_trace` 로 견줬다:
+  A = DC 27bac8c + Sensor 1367fc2(v2) · B = DC 27bac8c + Sensor 8978265(v3) · C = D14 + Sensor 8978265.
+  - **세 흐름이 갈리는 평가점은 모든 실행의 첫 평가점(i=0) 하나뿐이다.** 첫 묶음에는 모델 호출만 있고 도구 호출이 없다 --
+    v2 는 `UNKNOWN` -> 기본 결정 ESCALATE, v3 는 `NO_TOOL_RUN_YET`(INFERRED) -> CONTINUE.
+  - **B 와 C 는 행동이 같다.** D13 의 정책은 그 값을 맨 끝 분기("RUNNING · 도구 NO_TOOL_RUN_YET")로 *우연히* CONTINUE 로 보냈고,
+    D14 의 정책(`dc-test-execution-3`)은 명시적 분기로 보낸다. 바뀐 것은 까닭이다. 덧붙여 CONTINUE 는 이제 정책이 아는 값에서만 나온다 --
+    소스 어휘에 새 값이 생기면 기본 결정으로 간다.
+
+| 원천 | 첫 평가점 (A -> C) | 결정 변화 (A -> C) | 기본 결정 평가점 (A -> C) |
+|---|---|---|---|
+| SWE-agent 288 | ESCALATE -> CONTINUE (288) | 420 -> **708** (+288: i=1 에서 CONTINUE -> ESCALATE) | 18,756 -> 18,468 |
+| cc_stream 12 | ESCALATE -> CONTINUE (12) | 25 -> 17 (−8: 첫 ESCALATE -> CONTINUE 가 사라짐) | 12 -> 0 |
+| Claude Code JSONL 1 | ESCALATE -> CONTINUE (1) | 5 -> 4 | 8 -> 7 |
+
+  - **SWE-agent 의 UNKNOWN 은 그대로다**: i ≥ 1 의 `execution_health` 는 모두 UNKNOWN 이고 결정은 ESCALATE(18,735) 또는 끝난 뒤 없음(308).
+    +288 은 첫 평가점이 앎(`NO_TOOL_RUN_YET`)이 되면서 i=1 의 모름에서 ESCALATE 로 한 번 바뀌는 수다. **결정을 더 잘 한다는 뜻이 아니다.**
+  - `self_sna` 는 i=0 만 다르다. i=56 · i=154–159 의 ESCALATE 는 그대로다.
+  - **잠정 수치다.** Sensor CMD-S22(BD-89: `NO_TOOL_RUN_YET` 의 조건을 "그 실행의 L0 사건 ≥ 1" 로)가 통합되면 첫 평가점 수가 바뀔 수 있어 다시 잰다.
 
 - **484 -> 450 (2026-10-02, CMD-D12 · BD-76).** 시험 정책 `dc-test-*-2` 는 필수 상태를 모르면 맨 끝 분기 대신 목적의 기본 결정
   (`execution_control` = ESCALATE)을 쓴다. `decision_trace --diff` 로 D12 전후를 같은 Sensor 머리(통합 9b331cd)에서 비교했다(통합 ce993fc 에서도 450 · 같은 기본 결정 수) --

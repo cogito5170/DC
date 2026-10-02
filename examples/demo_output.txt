@@ -2,7 +2,7 @@
 ====================================================================================================
 1. 같은 State, 다른 목적 -> 다른 투영
 ====================================================================================================
-dc-b687d39e6a51f059  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-13b1127f9ad9cc80  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   agent.context_pressure                 BELOW_COMPACTION_THRESHOLD   INFERRED       FRESH     age=0s    
   agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=2s    
   session.answer_reliability             HIGH                         INFERRED       FRESH     age=0s    
@@ -13,7 +13,7 @@ dc-b687d39e6a51f059  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 1
   constraints: max_context_chars <= 3000
   actions: KEEP, COMPRESS, SUMMARIZE, RETRIEVE, DROP, DEFER
 
-dc-355271c30efa67ec  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-685100ffa4bd0fa0  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   agent.latency_state                    None                         NOT_APPLICABLE FRESH     age=0s      ✗
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
@@ -23,7 +23,7 @@ dc-355271c30efa67ec  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor
   constraints: max_cost_usd <= 0.1, max_latency_ms <= 5000
   actions: KEEP_PROVIDER, SWITCH_PROVIDER, RETRY, WAIT, STOP
 
-dc-da01bc9d9ac6f981  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
+dc-b0c55160f577098d  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
   agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=2s    
   agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
@@ -43,14 +43,14 @@ dc-da01bc9d9ac6f981  purpose=execution_control  as_of={'sensor': 18550.0}  compl
 ====================================================================================================
 2. Freeze -- 내용 해시 id. 같은 입력이면 같은 id, State 가 바뀌어도 앞 문맥은 그대로
 ====================================================================================================
-  두 번 지음: dc-c60da9ad18811a93 == dc-c60da9ad18811a93 -> True
-  LLM 제안(FAILING) 뒤: dc-c60da9ad18811a93 -> 같은가 True (제안은 State 가 아니다)
+  두 번 지음: dc-57c86924f5c4c3e8 == dc-57c86924f5c4c3e8 -> True
+  LLM 제안(FAILING) 뒤: dc-57c86924f5c4c3e8 -> 같은가 True (제안은 State 가 아니다)
   verify(): True
 
 ====================================================================================================
 3. 45 분 뒤(새 관측 없음) -- STALE 은 지우지 않고 표시하며, 정책에는 '모름' 으로 간다
 ====================================================================================================
-dc-49b49c578cf45cfb  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
+dc-fd150952605c7176  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
   agent.execution_health                 None                         STALE          STALE     age=2702s   ✗ [STALE_TTL]
   agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
   agent.resource_state                   None                         STALE          STALE     age=2700s   ✗ [STALE_TTL]
@@ -91,7 +91,7 @@ dc-49b49c578cf45cfb  purpose=execution_control  as_of={'sensor': 2718550.0}  com
 ====================================================================================================
 core_dict():
 {
- "id": "dc-5ba4bf22774048c5",
+ "id": "dc-ff6f238fd07a7cce",
  "purpose": "provider_selection",
  "purpose_version": "purpose-provider-4",
  "default_action": "KEEP_PROVIDER",
@@ -165,7 +165,7 @@ provenance (states 는 하나만):
   "sensor": {
    "config": "demo-v1",
    "contract": "llmsensor.state-export/2",
-   "rules": "completion-state-v1@1,context-pressure-v1@1,dependency-fault-v1@1,execution-health-v2@2,execution-interruption-v3@3,latency-state-v1@1,liveness-state-v2@2,progress-state-v1@1,quality-state-v1@1,rate-limit-state-v3@3,resource-pressure-v1@1,resource-state-v3@3,runtime-reliability-v2@2,tool-execution-health-v2@2"
+   "rules": "completion-state-v1@1,context-pressure-v1@1,dependency-fault-v1@1,execution-health-v3@3,execution-interruption-v3@3,latency-state-v1@1,liveness-state-v2@2,progress-state-v1@1,quality-state-v1@1,rate-limit-state-v3@3,resource-pressure-v1@1,resource-state-v3@3,runtime-reliability-v2@2,tool-execution-health-v2@2"
   }
  },
  "capabilities": {

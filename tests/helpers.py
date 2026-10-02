@@ -7,7 +7,7 @@ NOW = 1_000_000.0
 SENSOR_DOMAINS = {   # llmsensor.state.REGISTRY 의 값 집합과 같게(2026-10-01)
     "context_pressure": ("BELOW_CONTEXT_LIMIT", "BELOW_COMPACTION_THRESHOLD", "ABOVE_COMPACTION_THRESHOLD",
                          "AT_CONTEXT_LIMIT"),
-    "execution_health": ("NO_FAILURE_OBSERVED", "RECOVERED_FAILURES", "UNRESOLVED_FAILURES"),
+    "execution_health": ("NO_FAILURE_OBSERVED", "RECOVERED_FAILURES", "UNRESOLVED_FAILURES", "NO_TOOL_RUN_YET"),
     "tool_execution_health": ("NO_FAILURE_OBSERVED", "RECOVERED_FAILURES", "UNRESOLVED_FAILURES"),
     "completion_state": ("RUNNING", "ENDED_NORMALLY", "ENDED_BY_LIMIT", "ENDED_WITH_ERROR"),
     "progress_state": ("STALLED", "NO_STALL_DETECTED"),

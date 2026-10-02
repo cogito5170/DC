@@ -305,8 +305,8 @@ baseline 이 이 저장소를 결정 문맥의 기준 구현으로 정했다(BD-
 | `allow_stale` | 목적 명세의 키별 `allow_stale` **그리고** `ctx.value(key, allow_stale=True)` -- 둘 다 명시해야 STALE 값이 쓰인다(CMD-D6 · PC-07 에서 키별 선언으로 고침) |
 | `ContextStore` · `explain(context_id)` | `dc.ContextStore`(put · get · dump · load, 변조 거절). 근거 사슬은 문맥마다 복사하지 않는다(BD-05 의 단점, BD-06) -- `evidence_refs` 로 소스에서 펼친다 |
 | 목적 넷 | DC 이름으로(BD-30). `WAIT` 을 `provider_selection` 에 더했다. `optimize_llm_request`(목적 셋의 합)는 옮기지 않았다 |
-| 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-2`, CMD-D12 에서 안전 기본 결정을 쓰게 고침) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
-| Phase 8 정책 쓸모 | `eval/policy_impact.py` -- 같은 301 실행에서 결정 변화 **483 번으로 같았다**(옮길 때. 지금은 450 -- [`eval/RESULTS_policy_impact.md`](../eval/RESULTS_policy_impact.md)) |
+| 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-2` · 실행 `-3`. CMD-D12 에서 안전 기본 결정을 쓰게, CMD-D14 에서 `NO_TOOL_RUN_YET` 을 명시적 분기로) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
+| Phase 8 정책 쓸모 | `eval/policy_impact.py` -- 같은 301 실행에서 결정 변화 **483 번으로 같았다**(옮길 때. 지금은 729 -- [`eval/RESULTS_policy_impact.md`](../eval/RESULTS_policy_impact.md)) |
 
 옮기는 중에 찾은 것: Sensor 의 근거 종류 `EXTERNAL_LABEL`(외부 라벨) · `PROVIDER_DECLARED` · `VALIDATED_EXPERIMENT` 가 DC 어휘에 없어, 외부 라벨
 `quality_state` 가 `UNAUTHORIZED_BASIS` 로 거절되고 있었다(처음 돌린 정책 쓸모에서 `quality_state` 영향 0). 근거 어휘를 Sensor 8 개로 넓혔다(PC-14).

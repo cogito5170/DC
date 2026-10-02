@@ -177,6 +177,46 @@ def c_purpose(name):
     return PURPOSES[name]
 
 
+
+class NoToolRunYet(unittest.TestCase):
+    """BD-84 (CMD-D14): Sensor execution-health-v3 의 NO_TOOL_RUN_YET 을 시험 실행 정책이 명시적 분기로 다룬다."""
+
+    def ctx(self, health, comp="RUNNING", status="INFERRED"):
+        s = sensor_source()
+        s.put(rec("sensor", "agent:r1", "execution_health", health, status, evidence=() if health is None else ("m1",)))
+        if comp != "RUNNING":
+            s.put(rec("sensor", "task:r1", "completion_state", None, "UNKNOWN", evidence=()))
+        return builder(sensor=s).build("execution_control", subject(), now_ms=NOW,
+                                       capabilities={"human_reviewer": True, "retry_budget": True})
+
+    def test_running_with_no_tool_call_yet_continues_by_its_own_branch(self):
+        c = self.ctx("NO_TOOL_RUN_YET")
+        self.assertEqual(c.status("agent.execution_health"), "INFERRED")              # 쓸 수 있는 값이다(모름이 아니다)
+        d = epol.decide(c)
+        self.assertEqual((d.action, d.defaulted), ("CONTINUE", False))
+        self.assertIn("NO_TOOL_RUN_YET", d.reason)
+        self.assertEqual(d.used, ("task.completion_state", "agent.execution_health"))
+
+    def test_unknown_completion_is_still_the_default(self):
+        d = epol.decide(self.ctx("NO_TOOL_RUN_YET", comp="UNKNOWN"))
+        self.assertEqual((d.action, d.defaulted), ("ESCALATE", True))
+
+    def test_unobservable_results_stay_unknown_and_default(self):
+        d = epol.decide(self.ctx(None, status="UNKNOWN"))                               # SWE-agent: 결과를 못 본다
+        self.assertEqual((d.action, d.defaulted), ("ESCALATE", True))
+
+    def test_a_value_the_policy_does_not_know_never_falls_into_continue(self):
+        """소스 어휘에 새 값이 생겨도 맨 끝 분기에 우연히 떨어지지 않는다 -- 이번 NO_TOOL_RUN_YET 이 그랬다."""
+        class Ctx:
+            purpose, id, default_action, available_actions = "execution_control", "dc-x", "ESCALATE", ("CONTINUE", "ESCALATE")
+            vals = {"task.completion_state": "RUNNING", "agent.execution_health": "SOMETHING_NEW"}
+            def keys(self): return tuple(self.vals)
+            def value(self, k, allow_stale=False): return self.vals.get(k)
+        d = epol.decide(Ctx())
+        self.assertEqual((d.action, d.defaulted), ("ESCALATE", True))
+        self.assertIn("SOMETHING_NEW", d.reason)
+
+
 if __name__ == "__main__":
     unittest.main()
 

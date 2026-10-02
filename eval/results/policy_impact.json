@@ -1,7 +1,7 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "b5de4745617ef89b",
+ "decision_digest": "90b529c0024c0f4d",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
@@ -19,7 +19,7 @@
   "policies": [
    "dc-test-agent-context-2",
    "dc-test-provider-2",
-   "dc-test-execution-2",
+   "dc-test-execution-3",
    "(시험 정책 -- MS 아님)"
   ],
   "sensor_contract": "llmsensor.state-export/2"
@@ -27,11 +27,11 @@
  "policy_usefulness": {
   "points": 57873,
   "material_context_changes": 3071,
-  "decision_changes": 450,
+  "decision_changes": 729,
   "decision_changes_by_purpose": {
    "agent_context": 0,
    "provider_selection": 0,
-   "execution_control": 450
+   "execution_control": 729
   },
   "by_state": {
    "agent_context/agent.context_pressure": {
@@ -51,17 +51,17 @@
     "alone_impact_rate": 0.0
    },
    "execution_control/agent.execution_health": {
-    "state_changes": 18,
-    "with_decision_change": 18,
-    "state_impact_rate": 1.0,
-    "used_impact_rate": 1.0,
+    "state_changes": 306,
+    "with_decision_change": 297,
+    "state_impact_rate": 0.9705882352941176,
+    "used_impact_rate": 0.9705882352941176,
     "alone_changes": 0,
     "alone_impact_rate": null
    },
    "execution_control/agent.execution_interruption": {
     "state_changes": 8,
-    "with_decision_change": 5,
-    "state_impact_rate": 0.625,
+    "with_decision_change": 3,
+    "state_impact_rate": 0.375,
     "used_impact_rate": 0.375,
     "alone_changes": 0,
     "alone_impact_rate": null
@@ -100,10 +100,10 @@
    },
    "execution_control/tool": {
     "state_changes": 2456,
-    "with_decision_change": 22,
-    "state_impact_rate": 0.008957654723127036,
+    "with_decision_change": 301,
+    "state_impact_rate": 0.12255700325732899,
     "used_impact_rate": 0.0,
-    "alone_changes": 2431,
+    "alone_changes": 2143,
     "alone_impact_rate": 0.0
    },
    "provider_selection/runtime.rate_limit_state": {
@@ -119,6 +119,6 @@
  "defaulted_points": {
   "agent_context": 19491,
   "provider_selection": 19580,
-  "execution_control": 18776
+  "execution_control": 18475
  }
 }
