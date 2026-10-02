@@ -2,9 +2,9 @@
 ====================================================================================================
 1. 같은 State, 다른 목적 -> 다른 투영
 ====================================================================================================
-dc-7d33adcc9a877f81  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-072562b3b7909169  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   agent.context_pressure                 BELOW_COMPACTION_THRESHOLD   INFERRED       FRESH     age=0s    
-  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
+  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=2s    
   session.answer_reliability             HIGH                         INFERRED       FRESH     age=0s    
   session.context_pressure               MEDIUM                       INFERRED       FRESH     age=0s    
   session.correction_rate                LOW                          INFERRED       FRESH     age=0s    
@@ -13,7 +13,7 @@ dc-7d33adcc9a877f81  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 1
   constraints: max_context_chars <= 3000
   actions: KEEP, COMPRESS, SUMMARIZE, RETRIEVE, DROP, DEFER
 
-dc-08159721f1c85b33  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-05f80df3e1e70171  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   agent.latency_state                    None                         NOT_APPLICABLE FRESH     age=0s      ✗
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
@@ -23,15 +23,15 @@ dc-08159721f1c85b33  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor
   constraints: max_cost_usd <= 0.1, max_latency_ms <= 5000
   actions: KEEP_PROVIDER, SWITCH_PROVIDER, RETRY, WAIT, STOP
 
-dc-8c3df33ed3f06640  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
-  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
+dc-68fd73a3ecd034a9  purpose=execution_control  as_of={'sensor': 18550.0}  complete=True
+  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=2s    
   agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
   agent.resource_state                   WITHIN_BUDGET                INFERRED       FRESH     age=0s    
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
   task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=0s    
   task.progress_state                    None                         NOT_APPLICABLE PERMANENT age=0s      ✗
   task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
-  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=0s    
+  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=10s   
   tool[Edit].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=5s    
   tool[Grep].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=8s    
   tool[Read].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=7s    
@@ -43,22 +43,22 @@ dc-8c3df33ed3f06640  purpose=execution_control  as_of={'sensor': 18550.0}  compl
 ====================================================================================================
 2. Freeze -- 내용 해시 id. 같은 입력이면 같은 id, State 가 바뀌어도 앞 문맥은 그대로
 ====================================================================================================
-  두 번 지음: dc-d67113728ee1469b == dc-d67113728ee1469b -> True
-  LLM 제안(FAILING) 뒤: dc-d67113728ee1469b -> 같은가 True (제안은 State 가 아니다)
+  두 번 지음: dc-7bd51ec24fe92193 == dc-7bd51ec24fe92193 -> True
+  LLM 제안(FAILING) 뒤: dc-7bd51ec24fe92193 -> 같은가 True (제안은 State 가 아니다)
   verify(): True
 
 ====================================================================================================
 3. 45 분 뒤(새 관측 없음) -- STALE 은 지우지 않고 표시하며, 정책에는 '모름' 으로 간다
 ====================================================================================================
-dc-297166caf3bba0ee  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
-  agent.execution_health                 None                         STALE          STALE     age=2700s   ✗ [STALE_TTL]
+dc-cec565e1106fe64a  purpose=execution_control  as_of={'sensor': 2718550.0}  complete=False
+  agent.execution_health                 None                         STALE          STALE     age=2702s   ✗ [STALE_TTL]
   agent.execution_interruption           None                         UNKNOWN        UNTIMED   age=-       ✗
   agent.resource_state                   None                         STALE          STALE     age=2700s   ✗ [STALE_TTL]
   runtime.rate_limit_state               None                         STALE          STALE     age=2700s   ✗ [STALE_TTL]
   task.completion_state                  ENDED_NORMALLY               INFERRED       PERMANENT age=2700s 
   task.progress_state                    None                         NOT_APPLICABLE PERMANENT age=2700s   ✗
   task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
-  tool[Bash].tool_execution_health       None                         STALE          STALE     age=2700s   ✗ [STALE_TTL]
+  tool[Bash].tool_execution_health       None                         STALE          STALE     age=2710s   ✗ [STALE_TTL]
   tool[Edit].tool_execution_health       None                         STALE          STALE     age=2705s   ✗ [STALE_TTL]
   tool[Grep].tool_execution_health       None                         STALE          STALE     age=2708s   ✗ [STALE_TTL]
   tool[Read].tool_execution_health       None                         STALE          STALE     age=2707s   ✗ [STALE_TTL]
@@ -80,18 +80,18 @@ dc-297166caf3bba0ee  purpose=execution_control  as_of={'sensor': 2718550.0}  com
   [context_runtime(기본)]
     snapshot token_budget_pressure = HIGH
     CR 이 본 것                    = HIGH  -> budget_chars 750
-    state_source = {"kind": "state_reader", "id": "dc-25784a6874a9d772", "digest": "25784a6874a9d77297ee2e845ec23a9c1bca330f32d0e3c27431d2ac8bab6b58", "purpose": "context_runtime", "purpose_version": "purpose-cr-2", "reuse_key": "rk-cec357b4f24fa28f", "complete": false, "uncertain": ["session.answer_reliability=UNKNOWN", "session.correction_rate=UNKNOWN"]}
+    state_source = {"kind": "state_reader", "id": "dc-6125573f938531df", "digest": "6125573f938531df6c6538557c782edb7c57d95b5c86d204a878125fe0c2b5ed", "purpose": "context_runtime", "purpose_version": "purpose-cr-2", "reuse_key": "rk-cec357b4f24fa28f", "complete": false, "uncertain": ["session.answer_reliability=UNKNOWN", "session.correction_rate=UNKNOWN"]}
   [context_runtime + 압력 max_age 60 s(가정), 실행 사이 5 분]
     snapshot token_budget_pressure = HIGH
     CR 이 본 것                    = None  -> budget_chars 1500
-    state_source = {"kind": "state_reader", "id": "dc-a1c6b8a643b2ece3", "digest": "a1c6b8a643b2ece3e92a12802f59ff7e0de5bc39156db588b5464cb7453a0b8f", "purpose": "context_runtime", "purpose_version": "purpose-cr-1-op60s", "reuse_key": "rk-7c1bb19082fe6bca", "complete": false, "uncertain": ["session.answer_reliability=UNKNOWN", "session.context_pressure=STALE", "session.correction_rate=UNKNOWN", "session.token_budget_pressure=STALE"]}
+    state_source = {"kind": "state_reader", "id": "dc-866d24d2c3d1024a", "digest": "866d24d2c3d1024a13a4d881d898fdf6e2c653aacb533d6ccb005dc721beaf29", "purpose": "context_runtime", "purpose_version": "purpose-cr-1-op60s", "reuse_key": "rk-7c1bb19082fe6bca", "complete": false, "uncertain": ["session.answer_reliability=UNKNOWN", "session.context_pressure=STALE", "session.correction_rate=UNKNOWN", "session.token_budget_pressure=STALE"]}
 
 ====================================================================================================
 6. 기록 꼴 -- core(정책에 보내는 것) 전부 · provenance(같은 저장소에 두고 가리키는 것) 줄임 · 크기 (PC-07)
 ====================================================================================================
 core_dict():
 {
- "id": "dc-4faa0539953630f4",
+ "id": "dc-552035e18de8cf89",
  "purpose": "provider_selection",
  "purpose_version": "purpose-provider-3",
  "queries": {},
@@ -159,12 +159,12 @@ provenance (states 는 하나만):
  "builder": "dc-builder-2",
  "sources": {
   "ms": {
-   "model": "usage-model-3"
+   "model": "usage-model-4"
   },
   "sensor": {
    "config": "demo-v1",
-   "contract": "llmsensor.state-export/1",
-   "rules": "completion-state-v1@1,context-pressure-v1@1,execution-health-v1@1,execution-interruption-v1@1,latency-state-v1@1,liveness-state-v1@1,progress-state-v1@1,quality-state-v1@1,rate-limit-state-v2@2,resource-pressure-v1@1,resource-state-v1@1,runtime-reliability-v1@1,tool-execution-health-v1@1"
+   "contract": "llmsensor.state-export/2",
+   "rules": "completion-state-v1@1,context-pressure-v1@1,execution-health-v2@2,execution-interruption-v2@2,latency-state-v1@1,liveness-state-v2@2,progress-state-v1@1,quality-state-v1@1,rate-limit-state-v2@2,resource-pressure-v1@1,resource-state-v2@2,runtime-reliability-v2@2,tool-execution-health-v2@2"
   }
  },
  "capabilities": {
@@ -180,6 +180,7 @@ provenance (states 는 하나만):
    "entity": "agent:demo:example",
    "name": "latency_state",
    "source": "sensor",
+   "time_base": "monotonic_ms",
    "basis": "OPERATOR_ASSUMED",
    "rule_id": "latency-state-v1",
    "rule_version": 1,
@@ -197,8 +198,8 @@ provenance (states 는 하나만):
  "queries": []
 }
 reuse_key = rk-28ad5d6caa67aa93   (as_of 를 뺀 core 의 해시, BD-37)
-  context_runtime      core   816 B / 전체  3,629 B = 22.5%
-  context_policy       core   873 B / 전체  4,157 B = 21.0%
-  prompt_policy        core   833 B / 전체  3,727 B = 22.4%
-  provider_selection   core   822 B / 전체  3,771 B = 21.8%
-  execution_control    core 1,169 B / 전체  6,667 B = 17.5%
+  context_runtime      core   816 B / 전체  3,731 B = 21.9%
+  context_policy       core   873 B / 전체  4,284 B = 20.4%
+  prompt_policy        core   833 B / 전체  3,829 B = 21.8%
+  provider_selection   core   822 B / 전체  3,868 B = 21.3%
+  execution_control    core 1,169 B / 전체  6,952 B = 16.8%

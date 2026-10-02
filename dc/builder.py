@@ -195,7 +195,7 @@ class DecisionContextBuilder:
                 key=key, role=s.ref.role, entity=s.entity, name=s.ref.name, source=s.ref.source, basis=r.basis,
                 rule_id=r.rule_id, rule_version=r.rule_version, evidence_refs=tuple(r.evidence_refs),
                 observed_at_ms=r.observed_at_ms, ttl_ms=s.ttl_ms, permanent=bool(r.permanent), source_status=r.status,
-                issues=tuple(s.issues), withheld=None if show else s.value))
+                issues=tuple(s.issues), withheld=None if show else s.value, time_base=r.time_base))
         # 키 순으로 -- 직렬화의 키 순서와 상관없이 되살린 문맥이 같다
         return tuple(sorted(core, key=lambda c: c.key)), tuple(sorted(prov, key=lambda p: p.key))
 

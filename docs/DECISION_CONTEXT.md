@@ -220,7 +220,7 @@ DC 쪽(`tests/test_integration.py::WithMSRuntime`): 진짜 Runtime(모의 provid
 
 ## 7.1 Sensor 와의 배선 -- 내보내기 계약(2026-10-02)
 
-Sensor 가 상태 층 밖으로 내는 길을 하나로 세웠다: `llmsensor.state-export/1`(Sensor `llmsensor/state/export.py`).
+Sensor 가 상태 층 밖으로 내는 길을 하나로 세웠다: `llmsensor.state-export/2`(Sensor `llmsensor/state/export.py`).
 `SensorSource` 는 **그 계약만** 읽는다 -- `EXPORT_CONTRACT` · `state_catalog()` · `export_state()` · `subjects()` · `as_of()`.
 엔진 안(`current` · `view` · `reg` · `cfg`)은 보지 않는다. 계약 판본이 다르면 추측하지 않고 거절한다.
 
@@ -242,12 +242,24 @@ DC `tests/test_integration.py::WithSensor`(엔진 안을 감추고 계약 넷만
 - `rate_limit_state` · `quality_state` 는 UNKNOWN(Claude Code JSONL 에 그 관측이 없다) -> 필수가 빠져 `complete=False`.
 - `provider_selection` 은 MS 소스 없이 지으면 세션 상태가 UNKNOWN 으로 **남는다**(빠지지 않는다).
 
+### /1 -> /2 (2026-10-02, baseline CMD-D7)
+
+| 칸 | /1 | /2 |
+|---|---|---|
+| `entity_ref` | 없음 | `{type, scope, local}` -- 실체 id 꼴 `<유형>:<범위>:<지역>`(BD-32). scope = 실행 id(불투명), local = 도구 이름 또는 null |
+| `time_base` | `as_of` 에만 | 상태마다 (BD-33). DC 는 provenance 의 `time_base` 로 남긴다 |
+| `reason` | 있음(원 수치가 든 문자열) | **뺐다** -- 경계 밖으로 수가 새지 않게(BD-08) |
+| catalog | 상태 정의 · 유효성 어휘 | + 근거 종류 8 개(`bases`) · 시각 기준 값(`time_bases`) |
+| `subjects()` | 역할 -> 실체 | + `scope`(실행 id). DC 는 역할이 아니라서 뺀다 |
+
+유일한 소비자가 DC 라 판본을 함께 올렸다 -- DC `SensorSource` 는 `/2` 만 받는다(`/1` · `/3` 모두 거절, 시험). 엔진의 실체 id 규칙은 그대로다(Sensor 세션의 것).
+
 ## 7.2 DC 는 아직 바뀐다 -- 바꿔도 되는 것과 안 되는 것
 
 | | 무엇 | 바꾸면 |
 |---|---|---|
 | **바꿔도 된다** | 빌더의 다섯 단계 · 검사 · 문제 이름 · `DecisionContext` 꼴 · 목적 표 · 해시 방식 · `summary` | DC 안에서 끝난다. 목적을 바꾸면 그 판본만 올린다 |
-| **계약 -- 함부로 못 바꾼다** | Sensor 쪽 `llmsensor.state-export/1`(Sensor 소유) | 칸을 빼거나 뜻을 바꾸면 Sensor 가 /2 로 올리고, DC 의 `SensorSource` 를 같이 고친다 |
+| **계약 -- 함부로 못 바꾼다** | Sensor 쪽 `llmsensor.state-export/2`(**DC 세션 소유**, baseline BD-56) | 칸을 빼거나 뜻을 바꾸면 /3 으로 올리고 DC 의 `SensorSource` 를 같이 고친다 |
 | **계약 -- 함부로 못 바꾼다** | MS 쪽 `state_reader(um, sid) -> {"state", "record"}`(MS 소유) | 꼴을 바꾸면 MS 와 `MSStateReader` 를 같이 고친다 |
 
 두 저장소 모두 DC 를 import 하지 않는다. 그래서 DC 를 갈아엎어도 Sensor · MS 의 시험은 그대로 초록이다.

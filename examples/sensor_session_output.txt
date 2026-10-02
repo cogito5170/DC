@@ -1,36 +1,37 @@
-Sensor 레코드 378 개 · 실행 cc:this-session · as_of {'contract': 'llmsensor.state-export/1', 'run_id': 'cc:this-session', 'at': 1790914633801.0, 'time_base': 'unix_ms'} · now 1790914633801.0
+Sensor 레코드 471 개 · 실행 cc:this-session · as_of {'contract': 'llmsensor.state-export/2', 'run_id': 'cc:this-session', 'at': 1790915678739.0, 'time_base': 'unix_ms'} · now 1790915678739.0
 
-dc-b802b71092486a9a  purpose=execution_control  as_of={'sensor': 1790914633801.0}  complete=False
-  agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=6s    
-  agent.execution_interruption           NONE_OBSERVED                INFERRED       FRESH     age=6s    
-  agent.resource_state                   None                         NOT_APPLICABLE STALE     age=6942s   ✗
-  runtime.rate_limit_state               None                         UNKNOWN        UNTIMED   age=-       ✗
+dc-3c30e07fa1a0e34d  purpose=execution_control  as_of={'sensor': 1790915678739.0}  complete=False
+  agent.execution_health                 None                         STALE          STALE     age=28702s  ✗ [STALE_TTL]
+  agent.execution_interruption           NONE_OBSERVED                INFERRED       FRESH     age=10s   
+  agent.resource_state                   None                         NOT_APPLICABLE FRESH     age=0s      ✗
+  runtime.rate_limit_state               None                         STALE          STALE     age=7986s   ✗ [STALE_TTL]
   task.completion_state                  RUNNING                      INFERRED       FRESH     age=0s    
   task.progress_state                    None                         UNKNOWN        FRESH     age=0s      ✗
   task.quality_state                     None                         UNKNOWN        UNTIMED   age=-       ✗
-  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=6s    
-  tool[ReadNotifications].tool_execution_health None                         STALE          STALE     age=673s    ✗ [STALE_TTL]
-  tool[Read].tool_execution_health       NO_FAILURE_OBSERVED          INFERRED       FRESH     age=197s  
-  tool[ToolSearch].tool_execution_health None                         STALE          STALE     age=662s    ✗ [STALE_TTL]
-  tool[WebFetch].tool_execution_health   None                         STALE          STALE     age=27652s  ✗ [STALE_TTL]
-  tool[Write].tool_execution_health      NO_FAILURE_OBSERVED          INFERRED       FRESH     age=135s  
-  tool[mcp__claude-code-remote__add_repo].tool_execution_health None                         STALE          STALE     age=1606s   ✗ [STALE_TTL]
-  tool[mcp__claude-code-remote__register_repo_root].tool_execution_health None                         STALE          STALE     age=1601s   ✗ [STALE_TTL]
-  tool[mcp__claude-code-remote__send_message].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=272s  
-  tool[mcp__github__add_issue_comment].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=278s  
-  tool[mcp__github__issue_read].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=524s  
-  tool[mcp__github__issue_write].tool_execution_health None                         STALE          STALE     age=616s    ✗ [STALE_TTL]
-  tool[mcp__github__search_issues].tool_execution_health None                         STALE          STALE     age=627s    ✗ [STALE_TTL]
-  missing_required: runtime.rate_limit_state, task.progress_state
+  tool[Bash].tool_execution_health       RECOVERED_FAILURES           INFERRED       FRESH     age=57s   
+  tool[ReadNotifications].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=225s  
+  tool[Read].tool_execution_health       None                         STALE          STALE     age=1242s   ✗ [STALE_TTL]
+  tool[ToolSearch].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=54s   
+  tool[WebFetch].tool_execution_health   None                         STALE          STALE     age=28702s  ✗ [STALE_TTL]
+  tool[Write].tool_execution_health      None                         STALE          STALE     age=1180s   ✗ [STALE_TTL]
+  tool[mcp__claude-code-remote__add_repo].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=201s  
+  tool[mcp__claude-code-remote__register_repo_root].tool_execution_health None                         STALE          STALE     age=2646s   ✗ [STALE_TTL]
+  tool[mcp__claude-code-remote__send_message].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=65s   
+  tool[mcp__github__add_issue_comment].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=67s   
+  tool[mcp__github__issue_read].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=18s   
+  tool[mcp__github__issue_write].tool_execution_health None                         STALE          STALE     age=1661s   ✗ [STALE_TTL]
+  tool[mcp__github__search_issues].tool_execution_health None                         STALE          STALE     age=1672s   ✗ [STALE_TTL]
+  tool[mcp__github__update_issue_comment].tool_execution_health NO_FAILURE_OBSERVED          INFERRED       FRESH     age=35s   
+  missing_required: agent.execution_health, runtime.rate_limit_state, task.progress_state
   actions: CONTINUE, RETRY, ESCALATE, STOP
 
-dc-c7c7ff2ea6f1516e  purpose=provider_selection  as_of={'sensor': 1790914633801.0}  complete=False
+dc-7d3549d376f506a5  purpose=provider_selection  as_of={'sensor': 1790915678739.0}  complete=False
   agent.latency_state                    None                         NOT_APPLICABLE FRESH     age=0s      ✗
-  agent.resource_state                   None                         NOT_APPLICABLE STALE     age=6942s   ✗
-  runtime.rate_limit_state               None                         UNKNOWN        UNTIMED   age=-       ✗
-  runtime.runtime_reliability            NO_FAILURE_OBSERVED          INFERRED       FRESH     age=0s    
+  agent.resource_state                   None                         NOT_APPLICABLE FRESH     age=0s      ✗
+  runtime.rate_limit_state               None                         STALE          STALE     age=7986s   ✗ [STALE_TTL]
+  runtime.runtime_reliability            None                         STALE          STALE     age=7986s   ✗ [STALE_TTL]
   session.answer_reliability             None                         UNKNOWN        UNTIMED   age=-       ✗ [UNBOUND_ROLE]
   session.latency_pressure               None                         UNKNOWN        UNTIMED   age=-       ✗ [UNBOUND_ROLE]
-  missing_required: runtime.rate_limit_state, session.answer_reliability, session.latency_pressure
+  missing_required: runtime.rate_limit_state, runtime.runtime_reliability, session.answer_reliability, session.latency_pressure
   actions: KEEP_PROVIDER, (SWITCH_PROVIDER: alternate_provider 없음), (RETRY: retry_budget 없음), WAIT, STOP
 

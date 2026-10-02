@@ -1,7 +1,7 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "3f4535569798bcb6",
+ "decision_digest": "2331d970e7776260",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
@@ -22,16 +22,16 @@
    "dc-test-execution-1",
    "(시험 정책 -- MS 아님)"
   ],
-  "sensor_contract": "llmsensor.state-export/1"
+  "sensor_contract": "llmsensor.state-export/2"
  },
  "policy_usefulness": {
   "points": 57873,
   "material_context_changes": 3071,
-  "decision_changes": 483,
+  "decision_changes": 484,
   "decision_changes_by_purpose": {
    "agent_context": 0,
    "provider_selection": 0,
-   "execution_control": 483
+   "execution_control": 484
   },
   "by_state": {
    "agent_context/agent.context_pressure": {
@@ -51,10 +51,10 @@
     "alone_impact_rate": 0.0
    },
    "execution_control/agent.execution_health": {
-    "state_changes": 17,
-    "with_decision_change": 6,
-    "state_impact_rate": 0.35294117647058826,
-    "used_impact_rate": 0.35294117647058826,
+    "state_changes": 18,
+    "with_decision_change": 7,
+    "state_impact_rate": 0.3888888888888889,
+    "used_impact_rate": 0.3888888888888889,
     "alone_changes": 0,
     "alone_impact_rate": null
    },
@@ -100,8 +100,8 @@
    },
    "execution_control/tool": {
     "state_changes": 2456,
-    "with_decision_change": 6,
-    "state_impact_rate": 0.0024429967426710096,
+    "with_decision_change": 9,
+    "state_impact_rate": 0.0036644951140065146,
     "used_impact_rate": 0.0,
     "alone_changes": 2431,
     "alone_impact_rate": 0.0

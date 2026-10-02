@@ -9,7 +9,7 @@
 
 어댑터 둘은 Sensor · MS 를 **import 하지 않는다**(덕 타이핑). 저장소가 따로라 서로의 설치를 요구하지 않기 위해서다.
 
-    SensorSource   llmsensor 의 내보내기 계약(llmsensor.state-export/1) -- 실행 단위(agent · task · runtime · tool) 의미 상태
+    SensorSource   llmsensor 의 내보내기 계약(llmsensor.state-export/2) -- 실행 단위(agent · task · runtime · tool) 의미 상태
     MSUsageSource  ms.manager.StateManager + ms.usage_model -- 세션 단위 사용 상태
     StaticSource   (실체, 이름) -> StateRecord 표. 시험 · 기록 재생용
 """
@@ -56,11 +56,11 @@ class StaticSource:
         return dict(self._versions)
 
 
-SENSOR_CONTRACT = "llmsensor.state-export/1"
+SENSOR_CONTRACT = "llmsensor.state-export/2"     # /1 은 거절한다(유일한 소비자가 DC 라 판본을 함께 올렸다, CMD-D7)
 
 
 class SensorSource:
-    """Sensor 의 **내보내기 계약**(llmsensor.state-export/1)만 읽는다 -- 엔진 안(current · view · reg · cfg)은 보지 않는다.
+    """Sensor 의 **내보내기 계약**(llmsensor.state-export/2)만 읽는다 -- 엔진 안(current · view · reg · cfg)은 보지 않는다.
 
     계약: engine.EXPORT_CONTRACT · state_catalog() · export_state(entity, name, now) · subjects(run_id) · as_of(run_id).
     계약 판본이 다르면 추측하지 않고 거절한다(SourceError). 판정기 · 참조 정책 · Sensor 자체의 결정 문맥은 읽지 않는다.
@@ -82,7 +82,8 @@ class SensorSource:
         return StateRecord(self.name, d["entity"], d["name"], d["value"], d["status"], d["basis"] or "OBSERVED",
                            rule_id=d["rule_id"] or "", rule_version=d["rule_version"],
                            evidence_refs=tuple(d["evidence_refs"]), observed_at_ms=d["observed_at"],
-                           ttl_ms=d["ttl_ms"], permanent=bool(d["final"]), since_ms=d["since"])
+                           ttl_ms=d["ttl_ms"], permanent=bool(d["final"]), since_ms=d["since"],
+                           time_base=d["time_base"])
 
     def domain(self, entity, name):
         st = self._catalog["states"].get(name)
@@ -94,7 +95,8 @@ class SensorSource:
                 "rules": ",".join(f"{v['rule_id']}@{v['rule_version']}" for _, v in sorted(c["states"].items()))}
 
     def subject(self, run_id: "str | None" = None) -> dict:
-        s = self.engine.subjects(run_id or self.run_id)
+        s = dict(self.engine.subjects(run_id or self.run_id))
+        s.pop("scope", None)                                  # 역할이 아니다 -- 실체 id 의 범위(BD-32)
         return {**s, "tool": tuple(s["tool"])}
 
     def now_ms(self) -> float:
@@ -122,8 +124,9 @@ class MSUsageSource:
     """
     authoritative = True
 
-    def __init__(self, manager, model_version: str, name: str = "ms"):
-        self.manager, self.model_version, self.name = manager, model_version, name
+    def __init__(self, manager, model_version: str, name: str = "ms", time_base: "str | None" = None):
+        """time_base: MS 시계의 기준(BD-33). MS 는 시계를 주입받으므로(PC-12) 기준을 모르면 None 으로 둔다 -- 짐작하지 않는다."""
+        self.manager, self.model_version, self.name, self.time_base = manager, model_version, name, time_base
 
     def now_ms(self) -> float:
         return self.manager.clock() * 1000.0
@@ -156,7 +159,7 @@ class MSUsageSource:
                 refs.append(node.props[p].src)
         return StateRecord(self.name, entity, name, v.value, INFERRED, "OPERATOR_ASSUMED", rule_id=rule_id,
                            rule_version=self.model_version, evidence_refs=tuple(refs), observed_at_ms=v.ts * 1000.0,
-                           ttl_ms=ttl_ms)
+                           ttl_ms=ttl_ms, time_base=self.time_base)
 
     def domain(self, entity, name):
         node, model = self._model(entity)

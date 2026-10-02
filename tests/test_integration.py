@@ -75,10 +75,17 @@ class WithSensor(unittest.TestCase):
     def test_unknown_contract_version_is_refused(self):
         from dc import SourceError
 
-        class Future:
-            EXPORT_CONTRACT = "llmsensor.state-export/2"
-        with self.assertRaises(SourceError):
-            SensorSource(Future())
+        for other in ("llmsensor.state-export/1", "llmsensor.state-export/3"):    # 옛 판본도 앞 판본도 짐작하지 않는다
+            class Other:
+                EXPORT_CONTRACT = other
+            with self.assertRaises(SourceError):
+                SensorSource(Other())
+
+    def test_v2_time_base_reaches_provenance(self):
+        c = self.ctx()
+        pv = c.provenance.state("agent.execution_health")
+        self.assertEqual(pv.time_base, "monotonic_ms")                          # §40 시연 레코드의 기준
+        self.assertNotIn("scope", self.subj)                                     # 범위는 역할이 아니다
 
     def test_run_bound_now(self):
         src = SensorSource(self.E, run_id=demo.RUN)
