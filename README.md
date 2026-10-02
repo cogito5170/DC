@@ -60,6 +60,7 @@ ctx = B.build("provider_selection",
 ctx.id                      # "dc-…" 내용 해시 -- 결정 기록에 남겨 결정과 묶는다
 ctx.core_dict()             # 정책에 보내는 것(core) -- 키별 [값 | null, 유효성] · 제약 · 가능 행동. 근거 · 문제는 ctx.provenance
 ctx.reuse_key               # as_of 를 뺀 core 의 해시 -- 결정 재사용 열쇠(BD-37)
+ctx.rows("hot")             # 질의형 선택(PC-23): 소스가 돌린 질의의 행 -- 낡은 속성은 None
 ctx.validity.complete       # 필수 상태가 전부 판정되었나
 ctx.value("runtime.rate_limit_state")   # 쓸 수 있을 때만 값, 아니면 None
 ctx.available_actions       # ("KEEP_PROVIDER", "SWITCH_PROVIDER", "RETRY", "STOP")
@@ -69,7 +70,7 @@ policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이
 목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 79 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 88 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
 python3 eval/policy_impact.py                    # 시험 정책(refpolicy)으로 결정 문맥이 결정을 바꾸나 -- Sensor 레코드 301 실행
 ```

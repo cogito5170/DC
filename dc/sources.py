@@ -168,3 +168,44 @@ class MSUsageSource:
 
     def versions(self) -> dict:
         return {"model": self.model_version}
+
+
+class MSGraphSource:
+    """MS 의 세계 그래프에 **질의**한다(baseline BD-26 · PC-23) -- 질의를 돌리는 것은 MS 의 `run_query` 다(DC 는 복제하지 않는다).
+
+    DC 는 MS 를 import 하지 않으므로 배선이 둘을 준다:
+        MSGraphSource(manager, run_query=ms.query.run_query, make_query=ms.query.StateQuery.from_dict)
+    결과 행의 속성마다: MS 가 낡았다고 하면 STALE, 파생 값이면 INFERRED, 아니면 OBSERVED. 근거는 MS 의 값 출처(텔레메트리 id 또는
+    `derived:…`)를 참조로만 남긴다. 상태(read)는 내지 않는다 -- 이 소스는 질의만 한다.
+    """
+    authoritative = True
+
+    def __init__(self, manager, run_query, make_query, name: str = "ms_world"):
+        self.manager, self.run_query, self.make_query, self.name = manager, run_query, make_query, name
+
+    def now_ms(self) -> float:
+        return self.manager.clock() * 1000.0
+
+    def read(self, entity, name, now_ms):
+        return StateRecord(self.name, entity, name, None, UNKNOWN, "OBSERVED")
+
+    def domain(self, entity, name):
+        return None
+
+    def versions(self) -> dict:
+        return {"graph": "ms-state-graph", "models": ",".join(sorted(self.manager.models))}
+
+    def query(self, spec: dict, now_ms) -> dict:
+        res = self.run_query(self.make_query(spec), self.manager)
+        rows = []
+        for r in res.rows:
+            node = self.manager.graph.nodes.get(r.id)
+            props = {}
+            for p, v in r.props.items():
+                val = node.props.get(p) if node is not None else None
+                st = "STALE" if v["stale"] else ("INFERRED" if (val is not None and val.derived) else "OBSERVED")
+                props[p] = {"value": v["value"], "status": st, "ref": val.src if val is not None else None,
+                            "observed_at_ms": val.ts * 1000.0 if val is not None else None}
+            rows.append({"id": r.id, "model": r.model, "props": props, "must": r.must,
+                         "edges": [tuple(e) for e in r.edges]})
+        return {"rows": rows, "matched": res.matched}

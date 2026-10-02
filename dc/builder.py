@@ -19,9 +19,9 @@ from dataclasses import dataclass, field
 from .model import (CONSTRAINT_OPS, FRESH, FUTURE_OBSERVATION, INCOHERENT, INVALID, NO_EVIDENCE, NO_RULE, NO_SOURCE,
                     NOT_SCALAR, OUT_OF_DOMAIN, PERMANENT, SCALAR, SOURCE_ERROR, STALE,
                     STALE_AT_SOURCE, STALE_PURPOSE, STALE_TTL, STATUSES, UNAUTHORIZED_BASIS, UNBOUND_ROLE, UNKNOWN,
-                    UNTIMED, UNTIMED_REQUIRED, USABLE, Constraint, Core, CoreState, Issue, Provenance, StateProvenance,
-                    StateRecord, Subject)
-from .purpose import PURPOSES, Purpose, PurposeError, StateRef, is_objective_word
+                    UNTIMED, UNTIMED_REQUIRED, USABLE, Constraint, Core, CoreQuery, CoreRow, CoreState, Issue, Provenance,
+                    QueryProvenance, StateProvenance, StateRecord, Subject)
+from .purpose import PURPOSES, Purpose, PurposeError, QueryRef, StateRef, is_objective_word
 from .snapshot import freeze
 from .sources import SourceError, check_source
 
@@ -62,7 +62,8 @@ class DecisionContextBuilder:
         self.sources[src.name] = src
 
     # =========================================================================================================
-    def build(self, purpose, subject, *, now_ms, constraints=(), capabilities: "dict | None" = None):
+    def build(self, purpose, subject, *, now_ms, constraints=(), capabilities: "dict | None" = None, queries=()):
+        """queries: 요청 질의 [{"source": 소스, <QUERY_KEYS>…}] -- 목적의 query_sources 에 있는 소스만."""
         P = self._purpose(purpose)
         subj = subject if isinstance(subject, Subject) else Subject.of(subject)
         nows = self._nows(P, now_ms)
@@ -75,11 +76,14 @@ class DecisionContextBuilder:
         cons = self._constraints(P, constraints)
         caps = self._capabilities(capabilities)
         avail, missing = self._actions(P, dict(caps))
-        core = Core(P.name, P.version, tuple(sorted(nows.items())), subj.roles, core_states, cons, avail)
+        qrefs = self._query_refs(P, queries)
+        core_q, prov_q = self.run_queries(qrefs, nows)
+        core = Core(P.name, P.version, tuple(sorted(nows.items())), subj.roles, core_states, cons, avail, core_q)
+        used = {r.source for r in P.refs} | {q.source for q in qrefs}
         prov = Provenance(BUILDER_VERSION,
                           tuple((n, tuple(sorted((k, str(v)) for k, v in self.sources[n].versions().items())))
-                                for n in sorted({r.source for r in P.refs}) if n in self.sources),
-                          caps, missing, prov_states)
+                                for n in sorted(used) if n in self.sources),
+                          caps, missing, prov_states, prov_q)
         return freeze(core, prov, P)
 
     # ---- 1. Select ------------------------------------------------------------------------------------------
@@ -195,6 +199,63 @@ class DecisionContextBuilder:
         # 키 순으로 -- 직렬화의 키 순서와 상관없이 되살린 문맥이 같다
         return tuple(sorted(core, key=lambda c: c.key)), tuple(sorted(prov, key=lambda p: p.key))
 
+    # ---- 질의형 선택 (PC-23) ---------------------------------------------------------------------------------
+    @staticmethod
+    def _query_refs(P: Purpose, queries) -> tuple:
+        refs = list(P.queries)
+        for q in queries:
+            q = dict(q)
+            src = q.pop("source", P.query_sources[0] if len(P.query_sources) == 1 else None)
+            if src not in P.query_sources:
+                raise PurposeError(f"목적 {P.name} 은 소스 {src!r} 의 요청 질의를 받지 않는다 -- {P.query_sources}")
+            refs.append(QueryRef.of(src, q))
+        names = [r.name for r in refs]
+        if len(set(names)) != len(names):
+            raise PurposeError(f"질의 이름이 겹친다: {names}")
+        return tuple(sorted(refs, key=lambda r: r.name))
+
+    def run_queries(self, refs, nows) -> tuple:
+        """소스가 질의를 돌리고, DC 는 행을 검사해 core(값 · 유효성) 와 provenance(근거 참조 · 막힌 값)로 가른다."""
+        import json
+        core, prov = [], []
+        for ref in refs:
+            spec = json.loads(ref.spec)
+            src = self.sources.get(ref.source)
+            issues = []
+            ans = None
+            if src is None or not hasattr(src, "query"):
+                issues.append(Issue(NO_SOURCE, f"{ref.source}: 질의를 돌릴 소스가 없다"))
+            else:
+                try:
+                    ans = src.query(spec, nows.get(ref.source))
+                except Exception as e:     # 소스가 터진 것도 '모른다' -- 빈 결과 + 문제
+                    issues.append(Issue(SOURCE_ERROR, f"{type(e).__name__}: {e}"))
+            rows, refs_out, withheld = [], [], []
+            for row in (ans or {}).get("rows", ()):
+                props = []
+                for pname in sorted(row.get("props", {})):
+                    pv = row["props"][pname]
+                    val, st = pv.get("value"), pv.get("status", UNKNOWN)
+                    if st not in STATUSES:
+                        st = INVALID
+                        issues.append(Issue(INCOHERENT, f"{row['id']}.{pname}: 모르는 유효성"))
+                    if not isinstance(val, SCALAR):
+                        issues.append(Issue(NOT_SCALAR, f"{row['id']}.{pname}"))
+                        val, st = None, INVALID
+                    show = st in USABLE or (st == STALE and ref.allow_stale)
+                    props.append((pname, val if show else None, st))
+                    if not show and val is not None:
+                        withheld.append((row["id"], pname, val))
+                    refs_out.append((row["id"], pname, pv.get("ref"), pv.get("observed_at_ms"), st))
+                rows.append(CoreRow(row["id"], row.get("model", ""), tuple(props), bool(row.get("must", False)),
+                                    tuple(tuple(e) for e in row.get("edges", ()))))
+            core.append(CoreQuery(ref.name, tuple(rows), int((ans or {}).get("matched", len(rows))),
+                                  int(spec.get("priority", 0)),
+                                  json.dumps(spec.get("droppable", []), sort_keys=True, ensure_ascii=False,
+                                             separators=(",", ":"))))
+            prov.append(QueryProvenance(ref.name, ref.source, ref.spec, tuple(refs_out), tuple(withheld), tuple(issues)))
+        return tuple(core), tuple(prov)
+
     # ---- 보조 -----------------------------------------------------------------------------------------------
     def _purpose(self, purpose) -> Purpose:
         if isinstance(purpose, Purpose):
@@ -204,7 +265,8 @@ class DecisionContextBuilder:
         return self.purposes[purpose]
 
     def _nows(self, P: Purpose, now_ms) -> dict:
-        names = sorted({r.source for r in P.refs} & set(self.sources))     # 등록 안 된 소스는 '지금' 도 없다
+        names = sorted(({r.source for r in P.refs} | {q.source for q in P.queries} | set(P.query_sources))
+                       & set(self.sources))     # 등록 안 된 소스는 '지금' 도 없다
         if isinstance(now_ms, dict):
             lack = [n for n in names if n not in now_ms]
             if lack:
