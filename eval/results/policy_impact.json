@@ -1,0 +1,118 @@
+{
+ "runs": 301,
+ "deterministic": true,
+ "decision_digest": "8229a667241650ba",
+ "assumptions": {
+  "capabilities": {
+   "alternate_provider": true,
+   "retry_budget": true,
+   "human_reviewer": true
+  },
+  "external_labels": "swe_lite_20240620_sweagent_claude35sonnet_results.json",
+  "builder": "dc-builder-1",
+  "purposes": {
+   "context_policy": "purpose-context-2",
+   "provider_selection": "purpose-provider-3",
+   "execution_control": "purpose-execution-2"
+  },
+  "policies": [
+   "dc-test-context-1",
+   "dc-test-provider-1",
+   "dc-test-execution-1",
+   "(시험 정책 -- MS 아님)"
+  ],
+  "sensor_contract": "llmsensor.state-export/1"
+ },
+ "policy_usefulness": {
+  "points": 57873,
+  "material_context_changes": 3080,
+  "decision_changes": 483,
+  "decision_changes_by_purpose": {
+   "context_policy": 0,
+   "provider_selection": 0,
+   "execution_control": 483
+  },
+  "by_state": {
+   "context_policy/agent.context_pressure": {
+    "state_changes": 12,
+    "with_decision_change": 0,
+    "state_impact_rate": 0.0,
+    "used_impact_rate": 0.0,
+    "alone_changes": 12,
+    "alone_impact_rate": 0.0
+   },
+   "context_policy/agent.execution_health": {
+    "state_changes": 17,
+    "with_decision_change": 0,
+    "state_impact_rate": 0.0,
+    "used_impact_rate": 0.0,
+    "alone_changes": 17,
+    "alone_impact_rate": 0.0
+   },
+   "execution_control/agent.execution_health": {
+    "state_changes": 17,
+    "with_decision_change": 6,
+    "state_impact_rate": 0.35294117647058826,
+    "used_impact_rate": 0.35294117647058826,
+    "alone_changes": 0,
+    "alone_impact_rate": null
+   },
+   "execution_control/agent.execution_interruption": {
+    "state_changes": 8,
+    "with_decision_change": 3,
+    "state_impact_rate": 0.375,
+    "used_impact_rate": 0.375,
+    "alone_changes": 0,
+    "alone_impact_rate": null
+   },
+   "execution_control/runtime.rate_limit_state": {
+    "state_changes": 12,
+    "with_decision_change": 12,
+    "state_impact_rate": 1.0,
+    "used_impact_rate": 0.0,
+    "alone_changes": 0,
+    "alone_impact_rate": null
+   },
+   "execution_control/task.completion_state": {
+    "state_changes": 300,
+    "with_decision_change": 300,
+    "state_impact_rate": 1.0,
+    "used_impact_rate": 1.0,
+    "alone_changes": 0,
+    "alone_impact_rate": null
+   },
+   "execution_control/task.progress_state": {
+    "state_changes": 300,
+    "with_decision_change": 300,
+    "state_impact_rate": 1.0,
+    "used_impact_rate": 0.0,
+    "alone_changes": 0,
+    "alone_impact_rate": null
+   },
+   "execution_control/task.quality_state": {
+    "state_changes": 287,
+    "with_decision_change": 177,
+    "state_impact_rate": 0.6167247386759582,
+    "used_impact_rate": 0.6167247386759582,
+    "alone_changes": 287,
+    "alone_impact_rate": 0.6167247386759582
+   },
+   "execution_control/tool": {
+    "state_changes": 2456,
+    "with_decision_change": 6,
+    "state_impact_rate": 0.0024429967426710096,
+    "used_impact_rate": 0.0,
+    "alone_changes": 2431,
+    "alone_impact_rate": 0.0
+   },
+   "provider_selection/runtime.rate_limit_state": {
+    "state_changes": 12,
+    "with_decision_change": 0,
+    "state_impact_rate": 0.0,
+    "used_impact_rate": 0.0,
+    "alone_changes": 12,
+    "alone_impact_rate": 0.0
+   }
+  }
+ }
+}

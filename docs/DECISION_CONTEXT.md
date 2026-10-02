@@ -99,7 +99,7 @@ StateView
 | `context_runtime` | purpose-cr-1 | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
 | `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
-| `provider_selection` | purpose-provider-2 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · STOP |
+| `provider_selection` | purpose-provider-3 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
 | `execution_control` | purpose-execution-2 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
 
 `context_policy` · `prompt_policy` 의 상태는 MS 의 `AdaptiveContext` · `AdaptivePrompt` 가 실제로 읽는 것과 같다
@@ -137,7 +137,7 @@ Objective   토큰을 줄여라, 단 품질 >= 문턱         (Policy 소유 -- 
 | I6 | 결정 문맥은 정책을 정하지 않는다 | `I6_NoPolicyInside` -- 목적함수 · 고른 행동 칸 없음, 목적함수 낱말 제약 거절(명세를 우회해도 빌더가 막음), 행동은 상태와 무관, 패키지가 정책 · 프롬프트 · provider 를 import 안 함 |
 | I7 | LLM 출력은 결정 문맥의 상태를 고치지 못한다 | `I7_LLMCannotWrite` -- 권위 없는 소스 등록 거절, 쓰는 메서드 없음, ESTIMATE 근거 거절. 통합: Sensor `propose()` 뒤에도 digest 가 같다 |
 
-**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지(배선 뒤 리더 3 가지 더) -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
+**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지(배선 뒤 리더 3 · SensorSource 4 · PC-08 로 옮긴 것 7 가지 더) -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
 STALE 로 안 바꿈 · 소스 STALE 을 되살림 · 다리가 STALE 값을 넘김 · frozen 끔 · digest 가 상태를 안 봄 · 근거 없음을 받음 ·
 목적함수 낱말을 받음 · 행동을 상태로 거름 · 권위 없는 소스 등록 · ESTIMATE 를 권위로 · 비스칼라 통과 · 값 집합 검사 끔 ·
 미래 관측 받음 · 목적 밖 상태를 끼움 -- 모두 빨개진다. 무해 대조(주석만 바꿈)는 초록으로 남는다. 처음 돌렸을 때
@@ -208,6 +208,26 @@ DC `tests/test_integration.py::WithSensor`(엔진 안을 감추고 계약 넷만
 
 두 저장소 모두 DC 를 import 하지 않는다. 그래서 DC 를 갈아엎어도 Sensor · MS 의 시험은 그대로 초록이다.
 
+## 7.3 Sensor 의 결정 문맥을 합쳤다 (2026-10-02, baseline PC-08 · PC-14)
+
+baseline 이 이 저장소를 결정 문맥의 기준 구현으로 정했다(BD-05). Sensor 안의 결정 문맥 둘(`llmsensor/decision/context` · `StateEngine.decision_context()`)과
+참조 정책(`llmsensor/policy`)을 걷어 내고, 쓸 만한 것을 여기로 옮겼다.
+
+| Sensor 에서 | 여기서 |
+|---|---|
+| `allow_stale` | `ctx.value(key, allow_stale=True)` -- **정책이 명시해야만**, STALE 만 풀린다(UNKNOWN · INVALID · NOT_APPLICABLE 은 그대로 None) |
+| `ContextStore` · `explain(context_id)` | `dc.ContextStore`(put · get · dump · load, 변조 거절). 근거 사슬은 문맥마다 복사하지 않는다(BD-05 의 단점, BD-06) -- `evidence_refs` 로 소스에서 펼친다 |
+| 목적 넷 | DC 이름으로(BD-30). `WAIT` 을 `provider_selection` 에 더했다. `optimize_llm_request`(목적 셋의 합)는 옮기지 않았다 |
+| 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-1`) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
+| Phase 8 정책 쓸모 | `eval/policy_impact.py` -- 같은 301 실행에서 결정 변화 **483 번으로 같다**([`eval/RESULTS_policy_impact.md`](../eval/RESULTS_policy_impact.md)) |
+
+옮기는 중에 찾은 것: Sensor 의 근거 종류 `EXTERNAL_LABEL`(외부 라벨) · `PROVIDER_DECLARED` · `VALIDATED_EXPERIMENT` 가 DC 어휘에 없어, 외부 라벨
+`quality_state` 가 `UNAUTHORIZED_BASIS` 로 거절되고 있었다(처음 돌린 정책 쓸모에서 `quality_state` 영향 0). 근거 어휘를 Sensor 8 개로 넓혔다(PC-14).
+기본 허용은 ESTIMATE 만 뺀 일곱이다.
+
+Sensor 판과 다른 것(같은 결정이 아니다): 끝난 실행에서 CONTINUE · RETRY · STOP 을 문맥이 거르지 않는다(I6) -- 시험 정책이 거른다.
+런타임 압축 행동이 없다 -- 위 9 절.
+
 ## 8. 시연에서 본 것 (`examples/demo_output.txt`)
 
 - 같은 State 에서 세 목적이 서로 다른 상태 묶음 · 제약 · 행동을 낸다(맥락 7 · provider 5 · 실행 10 상태).
@@ -229,8 +249,8 @@ DC `tests/test_integration.py::WithSensor`(엔진 안을 감추고 계약 넷만
 - 두 소스의 '같은 현상' 을 맞대어 보는 교차 일관성 검사는 없다(예: Sensor `completion_state=ENDED` 인데 MS 가 아직 진행 중).
   어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다. 한 소스 안에서도 마찬가지다: 실제 기록에서 FRESH 인
   `execution_health` 가 STALE 인 도구 상태를 근거로 삼는 것을 봤다(7.1) -- 집계의 신선도는 구성 요소의 신선도를 물려받지 않는다.
-- Sensor 저장소 안에도 결정 문맥이 있다(`llmsensor/decision/context`, 다른 세션이 지음 -- 목적 넷 · 얼림 · explain · 참조 정책).
-  이 저장소와 같은 일이다. 어느 쪽을 정본으로 둘지는 정하지 않았다.
+- 런타임 압축(Claude Code 자동 압축을 시키는 것)에 해당하는 행동이 목적 어휘에 없다. Sensor 판 `COMPACT_CONTEXT` 는 시험 정책에서
+  `COMPRESS` 로 옮겼지만 같은 행동이 아니다 -- baseline 에 물었다(7.3).
 - **배선은 선택이다.** `state_reader` 를 안 주면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. CLI(`python3 -m ms ask`) ·
   평가 하니스(`ms eval`)에는 아직 리더를 꽂는 옵션이 없다 -- 사전등록 칸을 바꾸는 일이라 MS 쪽 결정이 먼저다.
 - `RunRecord.policy` 에 결정 · 상태를 남기는 것은 L0 Telemetry 의 경계 점검(cogito5170/Telemetry `docs/TELEMETRY.md` 7 절)에 어긋난다고
