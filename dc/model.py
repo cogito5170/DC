@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 # -- 유효성 · 신선도 · 근거 이름(Sensor 와 같은 낱말) -------------------------------------------------------------
@@ -140,6 +141,43 @@ class CoreState:
 
 
 @dataclass(frozen=True)
+class CoreRow:
+    """질의 결과의 행 하나(baseline BD-26 · PC-23) -- 상태와 같은 규칙: 속성 값은 쓸 수 있을 때만(또는 질의가 allow_stale 을 선언했고 STALE)."""
+    id: str
+    model: str
+    props: tuple                 # ((속성, 값 | None, 유효성), ...) 속성 이름 순
+    must: bool = False
+    edges: tuple = ()            # ((관계, 출발, 도착), ...) -- 양끝이 결과 안에 있는 것만
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "model": self.model, "props": {k: [v, st] for k, v, st in self.props},
+                "must": self.must, "edges": [list(e) for e in self.edges]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CoreRow":
+        return cls(d["id"], d["model"], tuple((k, v[0], v[1]) for k, v in sorted(d["props"].items())), d["must"],
+                   tuple(tuple(e) for e in d["edges"]))
+
+
+@dataclass(frozen=True)
+class CoreQuery:
+    name: str
+    rows: tuple                  # CoreRow, 소스가 준 순서(질의의 order_by)
+    matched: int                 # limit 전 개수
+    priority: int = 0
+    droppable: str = "[]"        # 질의의 droppable 술어(맥락 정책이 쓴다) -- 정준 JSON 문자열로 그대로 옮긴다(바꿀 수 없게)
+
+    def to_dict(self) -> dict:
+        return {"rows": [r.to_dict() for r in self.rows], "matched": self.matched, "priority": self.priority,
+                "droppable": json.loads(self.droppable)}
+
+    @classmethod
+    def from_dict(cls, name: str, d: dict) -> "CoreQuery":
+        return cls(name, tuple(CoreRow.from_dict(r) for r in d["rows"]), d["matched"], d["priority"],
+                   json.dumps(d["droppable"], sort_keys=True, ensure_ascii=False, separators=(",", ":")))
+
+
+@dataclass(frozen=True)
 class Core:
     purpose: str
     purpose_version: str
@@ -148,9 +186,11 @@ class Core:
     states: tuple                # CoreState, 목적 명세의 순서
     constraints: tuple           # Constraint
     actions: tuple               # 가능한 행동 이름
+    queries: tuple = ()          # CoreQuery, 이름 순 (PC-23)
 
     def to_dict(self) -> dict:
         return {"purpose": self.purpose, "purpose_version": self.purpose_version,
+                "queries": {q.name: q.to_dict() for q in self.queries},
                 "as_of": {k: v for k, v in self.as_of},
                 "subject": {r: (list(e) if isinstance(e, tuple) else e) for r, e in self.subject},
                 "states": {s.key: [s.value, s.status] for s in self.states},
@@ -161,7 +201,8 @@ class Core:
         return cls(d["purpose"], d["purpose_version"], tuple(sorted(d["as_of"].items())),
                    tuple((r, tuple(e) if isinstance(e, list) else e) for r, e in sorted(d["subject"].items())),
                    tuple(CoreState(k, v[0], v[1]) for k, v in sorted(d["states"].items())),
-                   tuple(Constraint.from_dict(c) for c in d["constraints"]), tuple(d["actions"]))
+                   tuple(Constraint.from_dict(c) for c in d["constraints"]), tuple(d["actions"]),
+                   tuple(CoreQuery.from_dict(n, q) for n, q in sorted(d.get("queries", {}).items())))
 
 
 # -- 저장되는 것: provenance ------------------------------------------------------------------------------------
@@ -197,24 +238,45 @@ class StateProvenance:
 
 
 @dataclass(frozen=True)
+class QueryProvenance:
+    name: str
+    source: str
+    spec: str                    # 질의 명세의 정준 JSON(재현용)
+    refs: tuple = ()             # ((행 id, 속성, 근거 참조, 관측 ms, 소스 유효성), ...) -- 참조만, 값은 없다
+    withheld: tuple = ()         # ((행 id, 속성, 소스 값), ...) -- core 에 싣지 않은 값(설명용)
+    issues: tuple = ()           # Issue
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "source": self.source, "spec": self.spec, "refs": [list(r) for r in self.refs],
+                "withheld": [list(w) for w in self.withheld], "issues": [i.to_dict() for i in self.issues]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "QueryProvenance":
+        return cls(d["name"], d["source"], d["spec"], tuple(tuple(r) for r in d["refs"]),
+                   tuple(tuple(w) for w in d["withheld"]), tuple(Issue(**i) for i in d["issues"]))
+
+
+@dataclass(frozen=True)
 class Provenance:
     builder: str                 # DC 빌더 판본
     sources: tuple = ()          # ((소스 이름, ((판본 키, 값), ...)), ...)
     capabilities: tuple = ()     # ((이름, 값), ...) -- 가능 행동을 정한 입력
     missing: tuple = ()          # ((못 하는 행동, (모자란 능력, ...)), ...)
     states: tuple = ()           # StateProvenance, core.states 와 같은 순서
+    queries: tuple = ()          # QueryProvenance, 이름 순
 
     def to_dict(self) -> dict:
         return {"builder": self.builder, "sources": {n: dict(v) for n, v in self.sources},
                 "capabilities": {k: v for k, v in self.capabilities},
                 "missing": {a: list(m) for a, m in self.missing},
-                "states": [s.to_dict() for s in self.states]}
+                "states": [s.to_dict() for s in self.states], "queries": [q.to_dict() for q in self.queries]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Provenance":
         return cls(d["builder"], tuple((n, tuple(sorted(v.items()))) for n, v in sorted(d["sources"].items())),
                    tuple(sorted(d["capabilities"].items())), tuple((a, tuple(m)) for a, m in sorted(d["missing"].items())),
-                   tuple(sorted((StateProvenance.from_dict(s) for s in d["states"]), key=lambda s: s.key)))
+                   tuple(sorted((StateProvenance.from_dict(s) for s in d["states"]), key=lambda s: s.key)),
+                   tuple(QueryProvenance.from_dict(q) for q in d.get("queries", [])))
 
     def state(self, key: str) -> StateProvenance:
         for s in self.states:
@@ -281,6 +343,27 @@ class DecisionContext:
         if s.status in USABLE or (allow_stale and s.status == STALE):
             return s.value
         return None
+
+    def query(self, name: str) -> "CoreQuery":
+        for q in self.core.queries:
+            if q.name == name:
+                return q
+        raise KeyError(name)
+
+    def rows(self, name: str) -> list:
+        """질의 결과를 맥락에 쓰기 좋은 꼴로: [{"id", "model", <속성>: 값 | None, "_unusable": [...], "_edges": [...]}].
+        쓸 수 없는 속성은 값이 None 이고 `_unusable` 에 이름이 실린다 -- 모르는 값을 지어내지 않는다."""
+        out = []
+        for r in self.query(name).rows:
+            d = {"id": r.id, "model": r.model}
+            for k, v, st in r.props:
+                d[k] = v
+                if st not in USABLE:
+                    d.setdefault("_unusable", []).append(k)
+            if r.edges:
+                d["_edges"] = [list(e) for e in r.edges]
+            out.append(d)
+        return out
 
     @property
     def reuse_key(self) -> str:

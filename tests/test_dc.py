@@ -412,7 +412,7 @@ class CoreProvenance(unittest.TestCase):
 
     def test_core_holds_only_what_policy_reads(self):
         c = build(capabilities=CAPS).core_dict()
-        self.assertEqual(set(c), {"id", "purpose", "purpose_version", "as_of", "subject", "states", "constraints",
+        self.assertEqual(set(c), {"id", "purpose", "purpose_version", "as_of", "subject", "states", "constraints", "queries",
                                   "actions"})
         for key, (value, status) in c["states"].items():
             if status not in ("OBSERVED", "DERIVED", "INFERRED"):

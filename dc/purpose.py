@@ -42,6 +42,31 @@ class StateRef:
         return f"{self.role}[{tail}].{self.name}" if tail else f"{self.role}.{self.name}"
 
 
+# 질의 명세의 칸 -- MS StateQuery 와 같은 낱말(ms/query.py). DC 는 질의를 **돌리지 않는다**: 소스가 돌리고 DC 는 결과를 검사 · 고정한다
+QUERY_KEYS = ("name", "model", "where", "related", "ids", "select", "order_by", "limit", "priority", "must", "droppable")
+
+
+@dataclass(frozen=True)
+class QueryRef:
+    """질의형 선택(baseline BD-26 · PC-23) -- 결정에 필요한 실체 행들을 소스에게 묻는다."""
+    source: str
+    spec: str                    # 질의 명세의 정준 JSON(QUERY_KEYS 만). 이름은 spec["name"]
+    allow_stale: bool = False    # 낡은 속성 값도 core 에 싣는다(명세가 선언해야만)
+
+    @property
+    def name(self) -> str:
+        import json
+        return json.loads(self.spec)["name"]
+
+    @classmethod
+    def of(cls, source: str, spec: dict, allow_stale: bool = False) -> "QueryRef":
+        import json
+        bad = set(spec) - set(QUERY_KEYS)
+        if bad or "name" not in spec:
+            raise PurposeError(f"질의 명세: 모르는 칸 {sorted(bad)} 또는 이름 없음 -- 받는 칸 {QUERY_KEYS}")
+        return cls(source, json.dumps(spec, sort_keys=True, ensure_ascii=False, separators=(",", ":")), allow_stale)
+
+
 @dataclass(frozen=True)
 class ActionSpec:
     name: str
@@ -57,6 +82,8 @@ class Purpose:
     constraints: tuple = ()      # 받아들이는 제약 이름
     actions: tuple = ()          # ActionSpec
     meaning: str = ""
+    queries: tuple = ()          # QueryRef -- 목적에 고정한 질의
+    query_sources: tuple = ()    # 요청마다 질의를 받아도 되는 소스(CR 처럼 요청이 질의를 정할 때)
 
     def __post_init__(self):
         seen = set()
@@ -79,6 +106,9 @@ class Purpose:
         names = [a.name for a in self.actions]
         if len(set(names)) != len(names):
             raise PurposeError(f"{self.name}: 행동 이름이 겹친다")
+        qn = [q.name for q in self.queries]
+        if len(set(qn)) != len(qn):
+            raise PurposeError(f"{self.name}: 질의 이름이 겹친다")
 
     def with_(self, **kw) -> "Purpose":
         return replace(self, **kw)
@@ -183,7 +213,7 @@ EXECUTION_CONTROL = Purpose(
 # MS CR(ms/cr.py) 의 plan(state) 한 번이 보는 것 전부: AdaptiveContext + AdaptivePrompt 가 읽는 세션 상태의 합집합.
 # MS Runtime 의 state_reader 자리에 꽂을 때 이 목적을 쓴다(dc/wiring.py). 프롬프트 쪽은 행동이 아니라 계획 칸이라 행동에 넣지 않았다.
 CONTEXT_RUNTIME = Purpose(
-    name="context_runtime", version="purpose-cr-1",
+    name="context_runtime", version="purpose-cr-2",     # -2: 요청 질의를 ms_world 에서 받는다(PC-23)
     meaning="MS Context Runtime 이 이번 요청의 맥락 · 프롬프트 계획을 정하기 위해 알아야 할 것",
     refs=(StateRef(M, "session", "token_budget_pressure"),
           StateRef(M, "session", "context_pressure"),
@@ -194,6 +224,7 @@ CONTEXT_RUNTIME = Purpose(
           StateRef(M, "session", "retry_pressure")),
     constraints=("max_context_chars", "max_output_tokens", "tool_permission"),
     actions=MS_CONTEXT_ACTIONS,
+    query_sources=("ms_world",),
 )
 
 PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME)}

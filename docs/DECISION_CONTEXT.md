@@ -112,11 +112,32 @@ DecisionContext
 
 baseline 이 잰 core(약 10 %)보다 크다 -- 그쪽은 키별 [값, 유효성] 만 셌고, 여기 core 에는 id · as_of · subject(도구 실체 목록) · 제약 · 가능 행동이 함께 있다.
 
+### 4.1 질의형 선택 (2026-10-02, baseline BD-26 · PC-23)
+
+CR 이 그래프를 직접 질의하지 않도록, 결정에 필요한 **실체 행들**도 DC 를 거친다.
+
+```
+목적 명세   queries        고정 질의 QueryRef(source, spec, allow_stale)          spec = MS StateQuery 와 같은 칸
+            query_sources  요청마다 질의를 받아도 되는 소스(context_runtime: "ms_world")
+build(…, queries=[{"source": "ms_world", "name": "hot", "model": "Server", "where": …}])
+   └─ 소스.query(spec, now) 가 돌린다 -- DC 는 질의를 돌리지 않는다(MS 는 MSGraphSource 에 run_query 를 주입)
+core        queries {이름: {rows: [{id, model, props {속성: [값 | null, 유효성]}, must, edges}], matched, priority, droppable}}
+provenance  queries [{name, source, spec(정준 JSON), refs [(행, 속성, 근거 참조, 관측 ms, 유효성)], withheld, issues}]
+ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None 이고 _unusable 에 이름
+```
+
+상태와 같은 규칙이다: 낡은 속성 값은 core 에 없다(질의가 `allow_stale` 을 선언해야만 싣는다). 소스가 없거나 터지면 빈 결과 + `NO_SOURCE` ·
+`SOURCE_ERROR`. 비스칼라 속성은 `NOT_SCALAR` 로 거절. 질의 칸은 `QUERY_KEYS` 만 받는다. 진짜 MS 세계 그래프에서 MS `run_query` 와 같은 행 ·
+같은 값(낡은 것은 None)이 나오는 것을 시험이 본다(`tests/test_queries.py`).
+
+**MS 쪽은 아직이다.** CR(`ms/cr.py` `minimal_context`)이 `run_query` 대신 DC 의 `ctx.rows()` 를 받게 바꾸는 것과, `state_reader` 이음매에
+요청의 질의를 넘기는 것은 MS 세션 소유라 baseline 에 요청했다. 그 전까지는 MS 가 MS 그림을 보이는 그대로 이전처럼 돈다.
+
 ## 5. 목적 -- 하나의 고정 꼴이 아니라 목적별 투영 (`dc/purpose.py`)
 
 | 목적 | 판본 | 상태(필수 / *선택*) | 받는 제약 | 행동(필요 능력) |
 |---|---|---|---|---|
-| `context_runtime` | purpose-cr-1 | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
+| `context_runtime` | purpose-cr-2 (요청 질의: `ms_world`) | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
 | `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
 | `provider_selection` | purpose-provider-3 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
@@ -155,6 +176,7 @@ Objective   토큰을 줄여라, 단 품질 >= 문턱         (Policy 소유 -- 
 | I4 | 결정 문맥은 만든 뒤 바뀌지 않는다 | `I4_Immutable` -- frozen, 뒤의 State 변화가 앞 문맥에 안 닿음, `object.__setattr__` 변조를 `verify()` 가 잡음, 고친 기록은 `from_dict` 가 거절 |
 | I5 | 쓸 수 있는 상태는 모두 근거로 되짚힌다 | `I5_Traceable` -- 근거 · 규칙 없는 상태는 INVALID. 통합: 근거 참조가 Sensor 지표 id 이고 `observation_ids` 로 관측까지 펼쳐짐, MS 는 텔레메트리 id |
 | I6 | 결정 문맥은 정책을 정하지 않는다 | `I6_NoPolicyInside` -- 목적함수 · 고른 행동 칸 없음, 목적함수 낱말 제약 거절(명세를 우회해도 빌더가 막음), 행동은 상태와 무관, 패키지가 정책 · 프롬프트 · provider 를 import 안 함 |
+| I9 | 질의 결과도 같은 규칙(PC-23) | `tests/test_queries.py` -- 낡은 속성은 core 에 없음 · 선언한 질의만 싣음 · 요청 질의는 허락된 소스 · 칸만 · 소스 고장은 빈 결과 + 문제 · 비스칼라 거절 · digest 가 행을 덮음 · 진짜 MS run_query 와 같은 행. 변이 7 가지 빨강 |
 | I8 | 정책이 읽는 것(core)과 감사 · 재현(provenance)을 섞지 않는다 · `reason` 없음 (PC-07) | `CoreProvenance` -- core 칸 고정, 쓸 수 없는 값은 core 에 없음, 값은 한 번만, reuse_key 는 as_of 를 뺌, 판본 다른 명세로 투영 안 함, provenance 도 digest 가 덮음. 변이 8 가지 빨강 · 무해 대조 초록 |
 | I7 | LLM 출력은 결정 문맥의 상태를 고치지 못한다 | `I7_LLMCannotWrite` -- 권위 없는 소스 등록 거절, 쓰는 메서드 없음, ESTIMATE 근거 거절. 통합: Sensor `propose()` 뒤에도 digest 가 같다 |
 
