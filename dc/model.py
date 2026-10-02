@@ -23,8 +23,10 @@ USABLE = frozenset((OBSERVED, DERIVED, INFERRED))       # 정책이 '지금 값'
 FRESH, UNTIMED, PERMANENT = "FRESH", "UNTIMED", "PERMANENT"
 FRESHNESS = (FRESH, STALE, UNTIMED, PERMANENT)
 
-BASES = ("OBSERVED", "DEFINITIONAL", "RUNTIME_DECLARED", "OPERATOR_ASSUMED", "ESTIMATE")
-DEFAULT_ALLOWED_BASIS = ("OBSERVED", "DEFINITIONAL", "RUNTIME_DECLARED", "OPERATOR_ASSUMED")  # ESTIMATE 는 권위가 없다
+# 근거 종류 -- Sensor llmsensor.state.Basis 8 개와 같다(baseline PC-14 · DUP-13). 모르는 종류는 UNAUTHORIZED_BASIS 로 거절한다
+BASES = ("OBSERVED", "DEFINITIONAL", "RUNTIME_DECLARED", "OPERATOR_ASSUMED", "ESTIMATE", "PROVIDER_DECLARED",
+         "VALIDATED_EXPERIMENT", "EXTERNAL_LABEL")
+DEFAULT_ALLOWED_BASIS = tuple(b for b in BASES if b != "ESTIMATE")   # ESTIMATE 는 권위가 없다
 
 SCALAR = (str, int, float, bool, type(None))
 
@@ -213,10 +215,15 @@ class DecisionContext:
     def keys(self) -> tuple:
         return tuple(s.key for s in self.states)
 
-    def value(self, key: str):
-        """쓸 수 있을 때만 값, 아니면 None(=모름). STALE · INVALID 값을 '지금 값' 으로 내주지 않는다."""
+    def value(self, key: str, allow_stale: bool = False):
+        """쓸 수 있을 때만 값, 아니면 None(=모름). STALE · INVALID 값을 '지금 값' 으로 내주지 않는다.
+
+        allow_stale=True 는 **정책이 명시적으로** 낡은 값을 받겠다고 할 때만 쓴다(Sensor decision/context 에서 옮겨 옴, BD-05).
+        그때도 STALE 만 풀린다 -- UNKNOWN · INVALID · NOT_APPLICABLE 은 여전히 None 이다. 문맥 자체는 바뀌지 않는다."""
         s = self.state(key)
-        return s.value if s.usable else None
+        if s.usable or (allow_stale and s.status == STALE):
+            return s.value
+        return None
 
     @property
     def available_actions(self) -> tuple:

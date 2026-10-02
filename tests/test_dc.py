@@ -201,7 +201,7 @@ class I5_Traceable(unittest.TestCase):
     def test_provenance_names_sources_and_versions(self):
         ctx = build("provider_selection")
         prov = ctx.provenance.to_dict()
-        self.assertEqual(prov["purpose_version"], "purpose-provider-2")
+        self.assertEqual(prov["purpose_version"], "purpose-provider-3")
         self.assertEqual(prov["sources"], {"ms": {"model": "usage-model-1"}, "sensor": {"config": "test-v1"}})
 
 
@@ -240,7 +240,7 @@ class I6_NoPolicyInside(unittest.TestCase):
         none = build("provider_selection")
         sw = {a.name: a for a in none.actions}["SWITCH_PROVIDER"]
         self.assertEqual((sw.available, sw.missing), (False, ("alternate_provider",)))
-        self.assertEqual(none.available_actions, ("KEEP_PROVIDER", "STOP"))
+        self.assertEqual(none.available_actions, ("KEEP_PROVIDER", "WAIT", "STOP"))
 
     def test_package_does_not_import_policy_prompt_or_providers(self):
         src = "\n".join(p.read_text(encoding="utf-8") for p in Path(__file__).resolve().parents[1].glob("dc/*.py"))

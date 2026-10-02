@@ -66,8 +66,9 @@ policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이
 목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 61 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 73 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
+python3 eval/policy_impact.py                    # 시험 정책(refpolicy)으로 결정 문맥이 결정을 바꾸나 -- Sensor 레코드 301 실행
 ```
 
 ## 불변식 일곱 (시험이 붙든다, 변이 15 가지로 확인)
@@ -82,6 +83,8 @@ python3 examples/demo.py                         # 진짜 Sensor · MS State 로
 
 ## 알고 쓸 것
 
+- **Sensor 의 결정 문맥을 합쳤다**(baseline PC-08): `allow_stale` · `ContextStore` · 시험 정책(`refpolicy/`, MS 아님) · 정책 쓸모 평가가
+  여기로 왔다. 결정 문맥은 이제 이 저장소 하나다. 설계 문서 7.3 절.
 - **Sensor 배선**: `SensorSource` 는 Sensor 의 내보내기 계약(`llmsensor.state-export/1`)만 읽는다. 실제 세션으로:
   `python3 examples/sensor_session.py <세션>.jsonl`. **DC 는 아직 바뀐다** -- 바꿔도 되는 것과 계약(못 바꾸는 것)은 설계 문서 7.2 절.
 - **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 두 저장소는 서로 import 하지 않고, MS 의

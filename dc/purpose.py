@@ -140,7 +140,7 @@ PROMPT_POLICY = Purpose(
 )
 
 PROVIDER_SELECTION = Purpose(
-    name="provider_selection", version="purpose-provider-2",
+    name="provider_selection", version="purpose-provider-3",
     meaning="누구에게 물을지(Provider Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(S, "runtime", "rate_limit_state"),
           StateRef(S, "runtime", "runtime_reliability"),
@@ -152,6 +152,7 @@ PROVIDER_SELECTION = Purpose(
     actions=(ActionSpec("KEEP_PROVIDER"),
              ActionSpec("SWITCH_PROVIDER", ("alternate_provider",), "다른 provider 가 설정되어 있어야"),
              ActionSpec("RETRY", ("retry_budget",), "재시도 한도가 남아 있어야"),
+             ActionSpec("WAIT", meaning="요금 한도 등이 풀릴 때까지 기다린다(Sensor 의 행동, BD-30)"),
              ActionSpec("STOP")),
 )
 

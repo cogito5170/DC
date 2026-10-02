@@ -54,10 +54,11 @@ class WithSensor(unittest.TestCase):
         self.assertEqual(c.state("tool[WebFetch].tool_execution_health").value, "UNRESOLVED_FAILURES")
         self.assertEqual(c.state("task.completion_state").freshness, "PERMANENT")
         self.assertFalse([s.key for s in c.states for i in s.issues if i.code == "OUT_OF_DOMAIN"])
-        sensor_dc = self.E.decision_context(demo.RUN, now=self.now)       # Sensor 의 손으로 짠 결정 문맥과 같은 값
-        self.assertEqual(c.state("agent.execution_health").value, sensor_dc["execution"]["health"]["value"])
-        # Sensor 는 NOT_APPLICABLE 을 문맥에서 지우고 목록으로만 남긴다. DC 는 상태로 남긴다(지우지 않는다)
-        self.assertIn("task.progress", sensor_dc["not_applicable"])
+        # Sensor 안의 결정 문맥은 DC 로 합쳤다(PC-08). 이제 견줄 것은 Sensor 의 내보내기 계약 하나다
+        for s in c.states:
+            d = self.E.export_state(s.entity, s.name, self.now)
+            self.assertEqual((s.value, s.source_status), (d["value"], d["status"]), s.key)
+        self.assertFalse(hasattr(self.E, "decision_context"))     # Sensor 쪽 결정 문맥은 없다
         self.assertEqual(c.state("task.progress_state").status, "NOT_APPLICABLE")
 
     def test_reads_only_the_export_contract(self):
