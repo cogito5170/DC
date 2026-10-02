@@ -4,7 +4,8 @@
 붙여, Policy 가 소비할 **하나의 고정 스냅숏**으로 만드는 계약층이다. 표준 라이브러리만 쓴다.
 
 ```
-Policy    "무엇을 할까"                 MS: Context · Prompt · Provider Policy, WALP
+Policy    "무엇을 할까"                 MS: Provider Policy · CR(Context Runtime) 안의 맥락 · 프롬프트 계획
+            └ 그 뒤 Validate · Arbitrate · Guard(MS Arbiter 를 가르는 중, baseline BD-24 · PC-10) -- DC 는 거기에 관여하지 않는다
    ▲
 DC        "이번 결정에 무엇이 중요한가"   ← 이 저장소
    ▲
