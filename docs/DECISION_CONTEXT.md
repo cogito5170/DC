@@ -130,8 +130,13 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 `SOURCE_ERROR`. 비스칼라 속성은 `NOT_SCALAR` 로 거절. 질의 칸은 `QUERY_KEYS` 만 받는다. 진짜 MS 세계 그래프에서 MS `run_query` 와 같은 행 ·
 같은 값(낡은 것은 None)이 나오는 것을 시험이 본다(`tests/test_queries.py`).
 
-**MS 쪽은 아직이다.** CR(`ms/cr.py` `minimal_context`)이 `run_query` 대신 DC 의 `ctx.rows()` 를 받게 바꾸는 것과, `state_reader` 이음매에
-요청의 질의를 넘기는 것은 MS 세션 소유라 baseline 에 요청했다. 그 전까지는 MS 가 MS 그림을 보이는 그대로 이전처럼 돈다.
+**요청 질의의 `allow_stale`**(CMD-D13 · BD-65): 요청 질의에 `"allow_stale": true` 를 두면 그 질의에서만 낡은 값이 core 에 실린다 --
+유효성은 STALE 그대로라 표시가 붙고(`ctx.rows()` 의 `_stale` · `_unusable`), provenance 의 질의 기록에 `allow_stale` 이 남는다.
+소스에 가는 명세(spec)에는 들어가지 않는다(DC 가 거르는 일이다). 참/거짓이 아니면 거절.
+
+**MS 쪽**(CMD-M6 통합): CR 은 `state_reader` 가 돌려준 질의 결과로 맥락을 짓고 그래프에 직접 묻지 않는다. `MSStateReader` 가 요청을 받아
+질의를 DC 로 돌린다(7 절). 알고 쓸 것: DC core 의 속성은 이름 순이라, DC 를 거친 맥락은 MS 가 직접 물은 맥락과 **내용은 같고 속성 순서가
+다르다**(MS 직접 길은 모형 선언 순). 정준 JSON 이 열쇠를 정렬하므로 DC 는 소스 순서를 싣지 않는다.
 
 ## 5. 목적 -- 하나의 고정 꼴이 아니라 목적별 투영 (`dc/purpose.py`)
 
@@ -140,7 +145,7 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 | `context_runtime` | purpose-cr-3 (요청 질의: `ms_world`) | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
 | `agent_context` | purpose-agent-context-2 (BD-58) | agent: context_pressure / *agent: execution_interruption* | max_context_tokens | KEEP · REDUCE · COMPACT(runtime_compaction) -- 에이전트 런타임 자신의 맥락(Claude Code 자동 압축 등) |
 | `context_policy` | purpose-context-3 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
-| `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
+| `prompt_policy` | purpose-prompt-2 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
 | `provider_selection` | purpose-provider-4 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
 | `execution_control` | purpose-execution-3 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
 
@@ -159,14 +164,15 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 ### 5.2 안전 기본 결정 -- 목적 명세에 판본으로 (2026-10-02, baseline BD-23 · BD-76 · CMD-D12)
 
 `Purpose.default_decision` 은 순서 있는 후보다. 빌더는 그중 **가능한(능력이 있는) 첫 행동**을 core 의 `default_action` 에 싣는다 --
-core 의 일부라 문맥 id · `reuse_key` 에 들어간다. 정책 · MS 가 같은 값을 읽는다(`ctx.default_action`).
+core 의 일부라 문맥 id · `reuse_key` 에 들어간다. 정책 · MS 가 같은 값을 읽는다(`ctx.default_action`, MS 는 `MSStateReader` 반환의
+`record.default_action` -- BD-81).
 
 | 목적 | `default_decision` | 사람(`human_reviewer`)이 없으면 |
 |---|---|---|
 | `context_runtime` · `context_policy` · `agent_context` | KEEP | KEEP |
 | `provider_selection` | KEEP_PROVIDER | KEEP_PROVIDER |
 | `execution_control` | ESCALATE, STOP | **STOP** |
-| `prompt_policy` | (없음 -- BD-23 이 값을 정하지 않았다) | -- |
+| `prompt_policy` | FULL_INSTRUCTION (BD-81: BD-23 의 '고정 프롬프트 계획' = MS `FIXED_PROMPT`) | FULL_INSTRUCTION |
 
 규칙(BD-76): 정책은 **필수 상태의 모름(None)을 지나쳐 다른 분기로 가지 않는다.** 필수 키를 쓸 수 없어 규칙이 정해지지 않으면 `default_action` 을
 쓴다(`refpolicy.default`, 결정에 `defaulted=True`). 아는 값만으로 정해지는 분기(예산 소진 → STOP 등)는 그 앞에 남아도 된다.
@@ -211,18 +217,21 @@ MS 가 CR(Context Runtime, `ms/cr.py`)을 세운 뒤(cr-1), MS 계획의 ③ Tel
 
 ```
 MS Runtime.handle(request)
-   └─ state_reader(usage_manager, sid) -> {"state": {상태: 값 | None}, "record": {...}}     ← MS 의 이음매(기본: usage_model.snapshot)
-         = dc.MSStateReader(builder, "context_runtime")
-              └─ DecisionContextBuilder.build(…)  ->  DecisionContext (고정, id)
+   └─ state_reader(usage_manager, sid, request) -> {"state": {상태: 값 | None}, "record": {...}, "queries": {...}}
+         = dc.MSStateReader(builder, "context_runtime")                                       ← MS 의 이음매(기본: usage_model.snapshot)
+              └─ DecisionContextBuilder.build(…, queries=request["queries"])  ->  DecisionContext (고정, id)
               └─ policy_state(ctx, "session")      쓸 수 있는 상태만 값, STALE · INVALID · UNKNOWN 은 None
+              └─ queries = {이름: core 질의}       CR 이 그래프 대신 이것으로 맥락을 짓는다(CMD-D13)
    └─ ContextRuntime.plan(state)  ·  ProviderPolicy.select(state)                          (MS 정책 규칙은 그대로)
    └─ RunRecord.policy.state       = 위 state                                              (replay 가 그대로 돈다)
       RunRecord.policy.state_source = {kind, id, digest, purpose, purpose_version, complete, uncertain}
 ```
 
 ```python
-from dc import DecisionContextBuilder, MSUsageSource, MSStateReader
-reader = MSStateReader(DecisionContextBuilder([MSUsageSource(usage_manager, U.MODEL_VERSION)]), "context_runtime")
+from dc import DecisionContextBuilder, MSGraphSource, MSUsageSource, MSStateReader
+reader = MSStateReader(DecisionContextBuilder([MSUsageSource(usage_manager, U.MODEL_VERSION),
+                                               MSGraphSource(world_manager, run_query, StateQuery.from_dict)]),
+                       "context_runtime")
 rt = Runtime(manager, registry, providers, context_selector=AdaptiveContext(), prompt_selector=AdaptivePrompt(),
              state_reader=reader)
 ```
@@ -231,6 +240,12 @@ MS 쪽 이음매가 지키는 것(MS `tests/test_runtime.py::StateReaderSeam`): 
 (원 측정 · 객체를 꽂아 넣으면 ValueError), 출처가 늘 기록된다(기본이면 `usage_model.snapshot`), 재현(`replay`)이 그대로 맞는다.
 DC 쪽(`tests/test_integration.py::WithMSRuntime`): 진짜 Runtime(모의 provider)에서 기록의 digest 가 리더의 마지막 문맥과 같고
 기록에서 되살려도 맞으며, 압력이 STALE 이면 CR 이 `None` 을 보고 맥락을 줄이지 않는다.
+
+**요청 질의**(CMD-D13): 리더는 요청의 `queries`(dict 또는 질의 데이터클래스, 각 `allow_stale` 포함)를 빌더에 넘기고 core 질의를 `queries` 로
+돌려준다 -- MS 는 그것을 꼴 검사한 뒤 결정 기록 `state_source.queries` 에 이름을 남긴다. 목적의 요청 질의 소스(`ms_world`)가 빌더에 없으면
+질의를 돌리지 않고 `queries` 를 돌려주지 않는다(빈 결과로 CR 을 굶기지 않는다 -- MS 가 스스로 묻는다). 인자 둘로 불러도 예전 꼴로 돈다.
+DC 시험: CR 이 그래프에 묻지 않음(`ms.cr.run_query` 를 막고 돌림) · 낡은 srv04 가 `allow_stale` 없이 None, 있으면 값 + STALE + `_stale` ·
+DC 를 거친 맥락의 내용 = MS 직접 길의 내용 · `allow_stale` 은 그 질의에서만.
 
 재현: 기록의 `state_source.digest` 와 `ctx.to_dict()`(리더의 `last` 또는 `sink`)를 맞춰 "그 결정이 본 것" 을 확인한다.
 

@@ -208,18 +208,23 @@ class WithMS(unittest.TestCase):
 class WithMSRuntime(unittest.TestCase):
     """진짜 MS Runtime(모의 provider)에 MSStateReader 를 꽂는다 -- CR 이 결정 문맥을 거친 상태를 본다."""
 
-    def _rt(self, purpose="context_runtime"):
+    def _rt(self, purpose="context_runtime", world=False):
+        """world: 세계 그래프 소스(MSGraphSource)도 꽂는다 -- 그러면 리더가 요청 질의를 돌린다(CMD-D13)."""
         import json as _j
         from ms.providers import make_provider
         from ms.tools import ToolRegistry
-        from dc import MSStateReader
+        from dc import MSGraphSource, MSStateReader
         spec = _j.loads((MS / "ms/examples/datacenter.json").read_text(encoding="utf-8"))
         self.clock = [float(spec["now"])]
         m = msmanager.StateManager.from_spec(spec, clock=lambda: self.clock[0])
         for line in (MS / "ms/examples/datacenter_telemetry.jsonl").read_text(encoding="utf-8").splitlines():
             m.ingest(_j.loads(line))
         self.src = MSUsageSource(m, msusage.MODEL_VERSION)
-        self.reader = MSStateReader(DecisionContextBuilder([self.src]), purpose)
+        srcs = [self.src]
+        if world:
+            from ms.query import StateQuery, run_query
+            srcs.append(MSGraphSource(m, run_query, StateQuery.from_dict))
+        self.reader = MSStateReader(DecisionContextBuilder(srcs), purpose)
         self.m = m
         rt = msruntime.Runtime(m, ToolRegistry(spec["tools"]), {"sim-claude": make_provider("sim-claude")},
                                context_selector=mspolicy.AdaptiveContext(), prompt_selector=mspolicy.AdaptivePrompt(),
@@ -248,6 +253,8 @@ class WithMSRuntime(unittest.TestCase):
                 self.assertEqual(rec["state"][k], snap[k], k)
         self.assertEqual(rec["state"]["token_budget_pressure"], "HIGH")
         self.assertTrue(mspolicy.replay(rec)["ok"])
+        self.assertEqual(src["default_action"], "KEEP")                    # BD-81: 목적의 안전 기본 결정이 MS 결정 기록까지
+        self.assertEqual(self.reader(rt.um, "session:s")["record"]["default_action"], self.reader.last.default_action)
 
     def test_stale_pressure_reaches_cr_as_unknown(self):
         from dc.purpose import CONTEXT_RUNTIME
@@ -261,6 +268,64 @@ class WithMSRuntime(unittest.TestCase):
         self.assertIsNone(rec["state"]["token_budget_pressure"])
         self.assertEqual(rec["context_policy"]["params"]["budget_chars"], 1500)          # 낡은 압력으로 줄이지 않았다
         self.assertIn("session.token_budget_pressure=STALE", rec["state_source"]["uncertain"])
+
+    # ---- CMD-D13: 요청 질의 · allow_stale (MS 의 복제 리더 대신) ----------------------------------------------------
+    def _ms_context(self, spec, queries, supplied=None):
+        """MS CR 이 LLM 에 보일 맥락. supplied 가 없으면 MS 가 그래프에 직접 묻는다(대조)."""
+        import json as _j
+        from ms.cr import ContextRuntime
+        from ms.tools import ToolRegistry
+        plan = ContextRuntime.plan({k: None for k in msusage.STATES}, mspolicy.FixedContext(), mspolicy.FixedPrompt())
+        cr = ContextRuntime.from_plan(ToolRegistry(spec["tools"]), plan)
+        return _j.loads(cr.minimal_context(self.m, "t", queries, supplied=supplied).render())
+
+    def test_request_queries_go_through_dc_and_cr_never_asks_the_graph(self):
+        from unittest import mock
+        spec, rt = self._rt(world=True)
+        with mock.patch("ms.cr.run_query", side_effect=AssertionError("CR 이 그래프에 직접 물었다")):
+            rec = self._go(rt, spec)
+        names = sorted(q["name"] for q in spec["queries"])
+        self.assertEqual(rec["state_source"]["queries"], names)                       # MS 결정 기록에 남는다
+        self.assertEqual(sorted(q.name for q in self.reader.last.core.queries), names)  # 문맥에 실렸다
+        self.assertEqual(rec["state_source"]["id"], self.reader.last.id)
+        out = self.reader(rt.um, "session:s", {"queries": spec["queries"]})
+        self.assertEqual(out["queries"], {q.name: q.to_dict() for q in self.reader.last.core.queries})
+
+    def test_two_argument_call_still_works(self):
+        spec, rt = self._rt(world=True)
+        self._go(rt, spec)
+        out = self.reader(rt.um, "session:s")
+        self.assertEqual(set(out), {"state", "record"})                               # 질의 없이 예전 꼴 그대로
+        self.assertEqual(self.reader.last.core.queries, ())
+
+    def test_without_a_world_source_queries_are_left_to_ms(self):
+        spec, rt = self._rt()                                                         # 사용 상태 소스만
+        out = self.reader(rt.um, "session:s", {"queries": spec["queries"]})
+        self.assertNotIn("queries", out)                                              # 빈 결과로 CR 을 굶기지 않는다
+        self.assertEqual(self.reader.last.core.queries, ())
+
+    def test_stale_value_only_with_allow_stale_and_marked(self):
+        """srv04.temp_c 는 낡았다(관측 900, ttl 60, 지금 1000). allow_stale 이 없으면 None, 있으면 값 + STALE + _stale 표시.
+        DC 를 거친 맥락이 MS 가 그래프에 직접 물은 맥락과 같다(BD-65 의 두 길이 같은 뜻)."""
+        spec, rt = self._rt(world=True)
+        fleet = next(q for q in spec["queries"] if q["name"] == "fleet")
+        for stale_ok in (False, True):
+            q = dict(fleet, allow_stale=True) if stale_ok else fleet
+            out = self.reader(rt.um, "session:s", {"queries": [q]})
+            row = next(r for r in out["queries"]["fleet"]["rows"] if r["id"] == "srv04")
+            self.assertEqual(row["props"]["temp_c"], [66.0 if stale_ok else None, "STALE"], stale_ok)
+            self.assertEqual(self.reader.last.provenance.queries[0].allow_stale, stale_ok)
+            # 속성 순서는 다르다(DC core 는 속성 이름 순, MS 직접 길은 모형 순) -- 내용만 견준다
+            norm = lambda r: {k: (sorted(v) if k in ("_unusable", "_stale") else v) for k, v in r.items()}
+            dc_rows = {r["id"]: norm(r) for r in self._ms_context(spec, [q], out["queries"])["state"]}
+            ms_rows = {r["id"]: norm(r) for r in self._ms_context(spec, [q])["state"]}
+            self.assertEqual(dc_rows, ms_rows, stale_ok)
+            self.assertEqual(dc_rows["srv04"].get("_stale"), ["status", "temp_c"] if stale_ok else None)
+            self.assertEqual(dc_rows["srv03"]["temp_c"], 84.0)                           # 대조: 낡지 않은 값
+        both = self.reader(rt.um, "session:s", {"queries": [dict(fleet, allow_stale=True),
+                                                            dict(fleet, name="fleet2")]})["queries"]
+        get = lambda n: next(r for r in both[n]["rows"] if r["id"] == "srv04")["props"]["temp_c"][0]
+        self.assertEqual((get("fleet"), get("fleet2")), (66.0, None))                 # 그 질의에서만
 
 
 @unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")

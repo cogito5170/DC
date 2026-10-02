@@ -199,6 +199,7 @@ class SafeDefault(unittest.TestCase):
         self.assertEqual(self.ctx(purpose="provider_selection").default_action, "KEEP_PROVIDER")
         self.assertEqual(self.ctx(purpose="agent_context").default_action, "KEEP")
         self.assertEqual(self.ctx(purpose="context_runtime").default_action, "KEEP")
+        self.assertEqual(self.ctx(purpose="prompt_policy").default_action, "FULL_INSTRUCTION")   # BD-81
         self.assertEqual(self.ctx().core_dict()["default_action"], "ESCALATE")   # MS 도 명세 없이 core 에서 읽는다
 
     def test_unknown_health_while_running_is_default_not_continue(self):

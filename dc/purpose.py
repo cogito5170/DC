@@ -164,7 +164,7 @@ CONTEXT_POLICY = Purpose(
 )
 
 PROMPT_POLICY = Purpose(
-    name="prompt_policy", version="purpose-prompt-1",
+    name="prompt_policy", version="purpose-prompt-2",     # -2: default_decision FULL_INSTRUCTION (BD-81)
     meaning="LLM 에게 어떻게 말할지(Prompt Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(M, "session", "token_budget_pressure"),
           StateRef(M, "session", "context_pressure"),
@@ -179,6 +179,7 @@ PROMPT_POLICY = Purpose(
              ActionSpec("JSON_SCHEMA_OUTPUT", ("native_json_schema",), "provider 가 스키마를 강제할 수 있어야"),
              ActionSpec("SET_REASONING", ("reasoning_control",), "provider 가 추론 수준을 받아야"),
              ActionSpec("NARROW_TOOLS", meaning="도구를 좁힌다(넓히는 행동은 없다)")),
+    default_decision=("FULL_INSTRUCTION",),     # BD-23 의 '고정 프롬프트 계획' = MS FIXED_PROMPT(instruction_mode: full) (BD-81)
 )
 
 PROVIDER_SELECTION = Purpose(

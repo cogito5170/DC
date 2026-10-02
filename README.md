@@ -91,7 +91,7 @@ python3 eval/policy_impact.py                    # 시험 정책(refpolicy)으�
   여기로 왔다. 결정 문맥은 이제 이 저장소 하나다. 설계 문서 7.3 절.
 - **Sensor 배선**: `SensorSource` 는 Sensor 의 내보내기 계약(`llmsensor.state-export/2`)만 읽는다. 실제 세션으로:
   `python3 examples/sensor_session.py <세션>.jsonl`. **DC 는 아직 바뀐다** -- 바꿔도 되는 것과 계약(못 바꾸는 것)은 설계 문서 7.2 절.
-- **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 두 저장소는 서로 import 하지 않고, MS 의
+- **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 빌더에 `MSGraphSource` 도 꽂으면 요청의 질의(질의별 `allow_stale`)를 DC 가 돌려 CR 에 준다(CMD-D13). 두 저장소는 서로 import 하지 않고, MS 의
   `state_reader` 이음매(함수 꼴 하나)로만 맞물린다. 안 꽂으면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. 자세히: 설계 문서 7 절.
 - (풀림, MS PC-03) MS 파생 상태가 예산 설정 때문에 늘 늙던 한계는 사라졌다. 파생 시각은 관측 입력 중 가장 오래된 것이다.
 - **안전 기본 결정**(BD-23 · BD-76): 목적 명세의 `default_decision` -> core 의 `default_action`(가능한 첫 후보). 정책은 필수 상태를 모르면

@@ -1,7 +1,7 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "c5afd5f44f9f9193",
+ "decision_digest": "b5de4745617ef89b",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
@@ -10,7 +10,7 @@
    "runtime_compaction": true
   },
   "external_labels": "swe_lite_20240620_sweagent_claude35sonnet_results.json",
-  "builder": "dc-builder-3",
+  "builder": "dc-builder-4",
   "purposes": {
    "agent_context": "purpose-agent-context-2",
    "provider_selection": "purpose-provider-4",

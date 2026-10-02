@@ -25,7 +25,8 @@ from .purpose import PURPOSES, Purpose, PurposeError, QueryRef, StateRef, is_obj
 from .snapshot import freeze
 from .sources import SourceError, check_source
 
-BUILDER_VERSION = "dc-builder-3"     # -2: core/provenance 분리 · reason 뺌 · 키별 allow_stale (PC-07 · CMD-D6) · -3: core.default_action (CMD-D12)
+BUILDER_VERSION = "dc-builder-4"     # -2: core/provenance 분리 · reason 뺌 · 키별 allow_stale (PC-07 · CMD-D6) · -3: core.default_action (CMD-D12)
+                                    # -4: 질의 provenance 에 allow_stale (CMD-D13)
 
 
 @dataclass
@@ -210,7 +211,10 @@ class DecisionContextBuilder:
             src = q.pop("source", P.query_sources[0] if len(P.query_sources) == 1 else None)
             if src not in P.query_sources:
                 raise PurposeError(f"목적 {P.name} 은 소스 {src!r} 의 요청 질의를 받지 않는다 -- {P.query_sources}")
-            refs.append(QueryRef.of(src, q))
+            stale_ok = q.pop("allow_stale", False)          # BD-65: 낡은 값의 탈출구 -- 그 질의에서만(CMD-D13)
+            if not isinstance(stale_ok, bool):
+                raise PurposeError(f"질의 {q.get('name')!r}: allow_stale 은 참/거짓이어야 한다 -- {stale_ok!r}")
+            refs.append(QueryRef.of(src, q, stale_ok))
         names = [r.name for r in refs]
         if len(set(names)) != len(names):
             raise PurposeError(f"질의 이름이 겹친다: {names}")
@@ -255,7 +259,8 @@ class DecisionContextBuilder:
                                   int(spec.get("priority", 0)),
                                   json.dumps(spec.get("droppable", []), sort_keys=True, ensure_ascii=False,
                                              separators=(",", ":"))))
-            prov.append(QueryProvenance(ref.name, ref.source, ref.spec, tuple(refs_out), tuple(withheld), tuple(issues)))
+            prov.append(QueryProvenance(ref.name, ref.source, ref.spec, tuple(refs_out), tuple(withheld), tuple(issues),
+                                        ref.allow_stale))
         return tuple(core), tuple(prov)
 
     # ---- 보조 -----------------------------------------------------------------------------------------------

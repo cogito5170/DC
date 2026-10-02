@@ -251,15 +251,18 @@ class QueryProvenance:
     refs: tuple = ()             # ((행 id, 속성, 근거 참조, 관측 ms, 소스 유효성), ...) -- 참조만, 값은 없다
     withheld: tuple = ()         # ((행 id, 속성, 소스 값), ...) -- core 에 싣지 않은 값(설명용)
     issues: tuple = ()           # Issue
+    allow_stale: bool = False    # 이 질의가 낡은 값을 core 에 싣겠다고 선언했나(BD-65 · CMD-D13). 명세(spec)는 소스에 가는 칸만이라 따로 둔다
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "source": self.source, "spec": self.spec, "refs": [list(r) for r in self.refs],
+        return {"name": self.name, "source": self.source, "spec": self.spec, "allow_stale": self.allow_stale,
+                "refs": [list(r) for r in self.refs],
                 "withheld": [list(w) for w in self.withheld], "issues": [i.to_dict() for i in self.issues]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "QueryProvenance":
         return cls(d["name"], d["source"], d["spec"], tuple(tuple(r) for r in d["refs"]),
-                   tuple(tuple(w) for w in d["withheld"]), tuple(Issue(**i) for i in d["issues"]))
+                   tuple(tuple(w) for w in d["withheld"]), tuple(Issue(**i) for i in d["issues"]),
+                   bool(d.get("allow_stale", False)))
 
 
 @dataclass(frozen=True)
@@ -362,8 +365,9 @@ class DecisionContext:
         raise KeyError(name)
 
     def rows(self, name: str) -> list:
-        """질의 결과를 맥락에 쓰기 좋은 꼴로: [{"id", "model", <속성>: 값 | None, "_unusable": [...], "_edges": [...]}].
-        쓸 수 없는 속성은 값이 None 이고 `_unusable` 에 이름이 실린다 -- 모르는 값을 지어내지 않는다."""
+        """질의 결과를 맥락에 쓰기 좋은 꼴로: [{"id", "model", <속성>: 값 | None, "_unusable": [...], "_stale": [...], "_edges": [...]}].
+        쓸 수 없는 속성은 값이 None 이고 `_unusable` 에 이름이 실린다 -- 모르는 값을 지어내지 않는다. 질의가 allow_stale 을 선언해
+        실린 낡은 값은 `_unusable` 과 함께 `_stale` 에도 실린다(MS 질의의 표시와 같은 이름)."""
         out = []
         for r in self.query(name).rows:
             d = {"id": r.id, "model": r.model}
@@ -371,6 +375,8 @@ class DecisionContext:
                 d[k] = v
                 if st not in USABLE:
                     d.setdefault("_unusable", []).append(k)
+                if st == STALE and v is not None:
+                    d.setdefault("_stale", []).append(k)
             if r.edges:
                 d["_edges"] = [list(e) for e in r.edges]
             out.append(d)

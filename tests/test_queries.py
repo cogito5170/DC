@@ -74,6 +74,23 @@ class Queries(unittest.TestCase):
         self.assertEqual(ctx.rows("hot")[0]["fan_rpm"], 1200)
         self.assertIn("fan_rpm", ctx.rows("hot")[0]["_unusable"])      # 값은 있어도 STALE 이라고 표시한다
 
+    def test_request_query_may_declare_allow_stale(self):
+        """CMD-D13 · BD-65: 요청 질의의 allow_stale -- 그 질의에서만 낡은 값이 STALE 표시와 함께 core 에 실린다."""
+        plain, stale = build(queries=[HOT]), build(queries=[dict(HOT, allow_stale=True)])
+        self.assertEqual(plain.query("hot").rows[0].props[0], ("fan_rpm", None, "STALE"))
+        self.assertEqual(stale.query("hot").rows[0].props[0], ("fan_rpm", 1200, "STALE"))
+        self.assertEqual((stale.rows("hot")[0]["_stale"], stale.rows("hot")[0]["_unusable"]), (["fan_rpm"], ["fan_rpm"]))
+        self.assertNotIn("_stale", plain.rows("hot")[0])
+        self.assertEqual((plain.provenance.queries[0].allow_stale, stale.provenance.queries[0].allow_stale), (False, True))
+        self.assertEqual(stale.provenance.queries[0].withheld, ())
+        self.assertNotIn("allow_stale", json.loads(stale.provenance.queries[0].spec))   # 소스에 가는 명세에는 없다
+        self.assertNotEqual(plain.reuse_key, stale.reuse_key)
+        self.assertEqual(from_dict(json.loads(json.dumps(stale.to_dict()))), stale)
+        two = build(queries=[dict(HOT, allow_stale=True), dict(HOT, name="hot2")])
+        self.assertEqual((two.rows("hot")[0]["fan_rpm"], two.rows("hot2")[0]["fan_rpm"]), (1200, None))
+        with self.assertRaises(PurposeError):
+            build(queries=[dict(HOT, allow_stale="yes")])
+
     def test_request_queries_only_from_allowed_sources_and_known_keys(self):
         with self.assertRaises(PurposeError):
             build(purpose="execution_control", queries=[HOT])          # 이 목적은 요청 질의를 받지 않는다
