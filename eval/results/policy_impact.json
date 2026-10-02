@@ -1,22 +1,23 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "f024b78160631488",
+ "decision_digest": "3f4535569798bcb6",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
    "retry_budget": true,
-   "human_reviewer": true
+   "human_reviewer": true,
+   "runtime_compaction": true
   },
   "external_labels": "swe_lite_20240620_sweagent_claude35sonnet_results.json",
   "builder": "dc-builder-2",
   "purposes": {
-   "context_policy": "purpose-context-2",
+   "agent_context": "purpose-agent-context-1",
    "provider_selection": "purpose-provider-3",
    "execution_control": "purpose-execution-2"
   },
   "policies": [
-   "dc-test-context-1",
+   "dc-test-agent-context-1",
    "dc-test-provider-1",
    "dc-test-execution-1",
    "(시험 정책 -- MS 아님)"
@@ -25,15 +26,15 @@
  },
  "policy_usefulness": {
   "points": 57873,
-  "material_context_changes": 3080,
+  "material_context_changes": 3071,
   "decision_changes": 483,
   "decision_changes_by_purpose": {
-   "context_policy": 0,
+   "agent_context": 0,
    "provider_selection": 0,
    "execution_control": 483
   },
   "by_state": {
-   "context_policy/agent.context_pressure": {
+   "agent_context/agent.context_pressure": {
     "state_changes": 12,
     "with_decision_change": 0,
     "state_impact_rate": 0.0,
@@ -41,12 +42,12 @@
     "alone_changes": 12,
     "alone_impact_rate": 0.0
    },
-   "context_policy/agent.execution_health": {
-    "state_changes": 17,
+   "agent_context/agent.execution_interruption": {
+    "state_changes": 8,
     "with_decision_change": 0,
     "state_impact_rate": 0.0,
     "used_impact_rate": 0.0,
-    "alone_changes": 17,
+    "alone_changes": 8,
     "alone_impact_rate": 0.0
    },
    "execution_control/agent.execution_health": {

@@ -81,7 +81,7 @@ class PoliciesReadOnlyTheContext(unittest.TestCase):
 class OnRealSensorStates(unittest.TestCase):
     """Sensor tests/test_decision_context.py 의 정책 시험을 DC 어휘로 옮긴 것."""
     RUN = "cc_stream:demo"
-    CAP = {"alternate_provider": True, "retry_budget": True, "human_reviewer": True}
+    CAP = {"alternate_provider": True, "retry_budget": True, "human_reviewer": True, "runtime_compaction": True}
 
     def mc(self, i, t, cr=1000, win=None):
         from llmsensor.telemetry.schema import record
@@ -112,16 +112,19 @@ class OnRealSensorStates(unittest.TestCase):
                                                    else src.now_ms(), capabilities=self.CAP if caps is None else caps)
 
     def test_context_policy(self):
-        c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "context_policy")
+        """BD-58: 런타임 맥락은 agent_context -- Sensor 판과 같은 행동(COMPACT, 압축 못 하면 REDUCE)."""
+        c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "agent_context")
         self.assertEqual(c.value("agent.context_pressure"), "ABOVE_COMPACTION_THRESHOLD")
-        self.assertEqual(cpol.decide(c).action, "COMPRESS")
-        d = cpol.decide(self.ctx([self.mc(0, 100)], "context_policy"))
+        self.assertEqual(cpol.decide(c).action, "COMPACT")
+        c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "agent_context", caps={})
+        self.assertEqual(cpol.decide(c).action, "REDUCE")
+        d = cpol.decide(self.ctx([self.mc(0, 100)], "agent_context"))
         self.assertEqual(d.action, "KEEP")
         self.assertIn("모른다", d.reason)
 
     def test_stale_pressure_is_not_used_unless_policy_asks(self):
         late = 100 + 10 * MIN + 1
-        c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "context_policy", now=late)
+        c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "agent_context", now=late)
         self.assertEqual(c.state("agent.context_pressure").status, "STALE")
         self.assertEqual(cpol.decide(c).action, "KEEP")
         self.assertIsNone(c.value("agent.context_pressure", allow_stale=True))         # 명세가 선언하지 않았다
@@ -160,7 +163,7 @@ class OnRealSensorStates(unittest.TestCase):
                  [self.mc(0, 100), self.end(api_error_status="429")], [self.mc(0, 100), self.end()]]
         for recs in cases:
             for caps in (self.CAP, {}):
-                for purpose, pol in (("context_policy", cpol), ("provider_selection", ppol),
+                for purpose, pol in (("agent_context", cpol), ("provider_selection", ppol),
                                      ("execution_control", epol)):
                     c = self.ctx(recs, purpose, caps)
                     d1, d2 = pol.decide(c), pol.decide(c)

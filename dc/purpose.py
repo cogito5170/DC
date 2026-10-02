@@ -131,7 +131,7 @@ def is_objective_word(name: str) -> bool:
     return any(w in words for w in OBJECTIVE_WORDS)
 
 
-# -- 기본 목적 다섯 -------------------------------------------------------------------------------------------------
+# -- 기본 목적 여섯 -------------------------------------------------------------------------------------------------
 # 소스 이름: "sensor" = llmsensor.state.StateEngine(실행 단위 의미 상태), "ms" = MS usage_model(세션 단위 사용 상태)
 S, M = "sensor", "ms"
 
@@ -210,6 +210,18 @@ EXECUTION_CONTROL = Purpose(
              ActionSpec("STOP")),
 )
 
+# 에이전트 런타임 자신의 맥락(예: Claude Code 자동 압축) -- MS 가 LLM 에 무엇을 보일지(context_policy)와 다른 결정이다(baseline BD-58 · PC-15).
+AGENT_CONTEXT = Purpose(
+    name="agent_context", version="purpose-agent-context-1",
+    meaning="에이전트 런타임이 자기 맥락을 어떻게 다룰지(압축을 시킬지 · 덜어 낼지 · 그대로 둘지) 정하기 위해 알아야 할 것",
+    refs=(StateRef(S, "agent", "context_pressure"),
+          StateRef(S, "agent", "execution_interruption", required=False)),
+    constraints=("max_context_tokens",),
+    actions=(ActionSpec("KEEP", meaning="런타임 맥락을 그대로"),
+             ActionSpec("REDUCE", meaning="런타임 맥락을 덜어 낸다(요약 없이 -- 새 대화 등)"),
+             ActionSpec("COMPACT", ("runtime_compaction",), "런타임에 맥락 압축을 시킨다 -- 런타임이 압축을 할 수 있어야")),
+)
+
 # MS CR(ms/cr.py) 의 plan(state) 한 번이 보는 것 전부: AdaptiveContext + AdaptivePrompt 가 읽는 세션 상태의 합집합.
 # MS Runtime 의 state_reader 자리에 꽂을 때 이 목적을 쓴다(dc/wiring.py). 프롬프트 쪽은 행동이 아니라 계획 칸이라 행동에 넣지 않았다.
 CONTEXT_RUNTIME = Purpose(
@@ -227,4 +239,5 @@ CONTEXT_RUNTIME = Purpose(
     query_sources=("ms_world",),
 )
 
-PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME)}
+PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME,
+                                AGENT_CONTEXT)}

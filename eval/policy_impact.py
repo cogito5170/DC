@@ -11,9 +11,9 @@ Sensor 내보내기 계약 -> dc.SensorSource -> DecisionContext -> refpolicy(�
                       state_impact_rate = 결정도 바뀐 / 상태 바뀜 · used_impact_rate = 정책이 그 상태를 썼을 때만 ·
                       alone_impact_rate = 그 상태 혼자 바뀐 점에서만(실행 끝의 동시 변화를 가른다)
 
-가정(결과에 적는다): 능력 {alternate_provider, retry_budget, human_reviewer} = 참. 외부 라벨 = SWE-bench Lite 판정(Sensor eval/data).
-시험 정책은 MS 정책이 아니다 -- 쓸모는 '이 시험 정책에 대한' 쓸모다. Sensor 판(reference-*-v1)과 행동 어휘가 달라
-(COMPACT_CONTEXT 없음 · 끝난 실행의 행동을 문맥이 거르지 않음) 수가 1:1 로 맞지 않는다.
+가정(결과에 적는다): 능력 {alternate_provider, retry_budget, human_reviewer, runtime_compaction} = 참. 외부 라벨 = SWE-bench Lite 판정(Sensor eval/data).
+시험 정책은 MS 정책이 아니다 -- 쓸모는 '이 시험 정책에 대한' 쓸모다. 맥락 정책은 목적 agent_context(BD-58)로 Sensor 판과 같은
+행동(KEEP · REDUCE · COMPACT)이다. 남은 차이: 끝난 실행의 행동을 문맥이 거르지 않는다(정책이 거른다).
 
 Sensor 쪽에 남은 것: 팩 · 상태별 계산가능률 · UNKNOWN/STALE 률 · 근거 사슬 덮임(Sensor eval/ms_end_to_end.py).
 """
@@ -37,8 +37,8 @@ from refpolicy import context as cpol, execution as epol, provider as ppol  # no
 
 REC = SENSOR / "eval" / "results" / "sensor_layer_records.jsonl.gz"
 LABELS = SENSOR / "eval" / "data" / "swe_lite_20240620_sweagent_claude35sonnet_results.json"
-CAP = {"alternate_provider": True, "retry_budget": True, "human_reviewer": True}
-POLICIES = (("context_policy", cpol), ("provider_selection", ppol), ("execution_control", epol))
+CAP = {"alternate_provider": True, "retry_budget": True, "human_reviewer": True, "runtime_compaction": True}
+POLICIES = (("agent_context", cpol), ("provider_selection", ppol), ("execution_control", epol))
 
 
 def load():

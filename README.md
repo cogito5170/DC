@@ -67,7 +67,7 @@ ctx.available_actions       # ("KEEP_PROVIDER", "SWITCH_PROVIDER", "RETRY", "STO
 policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이름: 값 | None}
 ```
 
-목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
+목적 여섯: `context_runtime`(MS CR 에 꽂는 것) · `agent_context`(런타임 자신의 맥락, BD-58) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
 python3 -m unittest discover -s tests -t .      # 88 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
