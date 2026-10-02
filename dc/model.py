@@ -69,6 +69,7 @@ class StateRecord:
     ttl_ms: "float | None" = None
     permanent: bool = False              # 끝난 일에 대한 사실 -- 낡지 않는다
     since_ms: "float | None" = None
+    time_base: "str | None" = None       # unix_ms · monotonic_ms · None(모름) -- baseline BD-33
 
 
 @dataclass(frozen=True)
@@ -223,9 +224,11 @@ class StateProvenance:
     source_status: str
     issues: tuple = ()           # Issue
     withheld: object = None      # core 에 싣지 않은 소스 값(STALE · INVALID 등) -- 설명용. core 값이 있으면 None
+    time_base: "str | None" = None   # 관측 시각의 기준(BD-33)
 
     def to_dict(self) -> dict:
         return {"key": self.key, "role": self.role, "entity": self.entity, "name": self.name, "source": self.source,
+                "time_base": self.time_base,
                 "basis": self.basis, "rule_id": self.rule_id, "rule_version": self.rule_version,
                 "evidence_refs": list(self.evidence_refs), "observed_at_ms": self.observed_at_ms,
                 "ttl_ms": self.ttl_ms, "permanent": self.permanent, "source_status": self.source_status,
