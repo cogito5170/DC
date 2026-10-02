@@ -90,11 +90,14 @@ class WithMS(unittest.TestCase):
                                                        "latency_budget_ms": 8000})
         sig = {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 2000,
                "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
-               "interaction.proposal_invalid": 0, "interaction.walp_denies": 0, "task.matched_rows": 5}
-        for k, v in sig.items():
-            self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": k, "value": v, "ts": self.clock[0]})
-        self.m.ingest({"source": "user", "entity": self.sid, "signal": "outcome.user_correction", "value": False,
-                       "ts": self.clock[0]})
+               "interaction.proposal_invalid": 0, "interaction.arbiter_denies": 0, "task.matched_rows": 5}
+        # usage-model-2 부터 품질 상태(answer_reliability · correction_rate)는 표본 MIN_SAMPLES 개 전에는 UNKNOWN 이다
+        # (실패 한 번으로 안 뒤집히게). 그래서 같은 실행을 그만큼 넣는다. 신호 이름은 usage-model-3 의 arbiter_denies
+        for _ in range(msusage.MIN_SAMPLES):
+            for k, v in sig.items():
+                self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": k, "value": v, "ts": self.clock[0]})
+            self.m.ingest({"source": "user", "entity": self.sid, "signal": "outcome.user_correction", "value": False,
+                           "ts": self.clock[0]})
         self.src = MSUsageSource(self.m, msusage.MODEL_VERSION)
         self.b = DecisionContextBuilder([self.src])
 
@@ -157,7 +160,7 @@ class BothSources(unittest.TestCase):
         m = msmanager.StateManager(clock=lambda: clock[0])
         sid = msusage.open_session(m, "s1", {"latency_budget_ms": 8000})
         for k, v in {"latency.total_ms": 9000, "interaction.llm_calls": 2, "interaction.proposal_invalid": 0,
-                     "interaction.walp_denies": 0}.items():
+                     "interaction.arbiter_denies": 0}.items():
             m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
         s, ms = SensorSource(E), MSUsageSource(m, msusage.MODEL_VERSION)
         ctx = DecisionContextBuilder([s, ms]).build(

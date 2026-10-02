@@ -35,11 +35,14 @@ def main():
     clock = [1000.0]
     m = StateManager(clock=lambda: clock[0])
     sid = U.open_session(m, "s1", {"token_budget": 20000, "context_budget": 4000, "latency_budget_ms": 8000})
-    for k, v in {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 9000,
-                 "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
-                 "interaction.proposal_invalid": 0, "interaction.walp_denies": 0, "task.matched_rows": 5}.items():
-        m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
-    m.ingest({"source": "user", "entity": sid, "signal": "outcome.user_correction", "value": False, "ts": clock[0]})
+    # usage-model-2 부터 품질 상태는 표본 MIN_SAMPLES 개 전에는 UNKNOWN -- 같은 실행을 그만큼 넣는다(신호 이름은 usage-model-3)
+    for _ in range(U.MIN_SAMPLES):
+        for k, v in {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 9000,
+                     "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
+                     "interaction.proposal_invalid": 0, "interaction.arbiter_denies": 0,
+                     "task.matched_rows": 5}.items():
+            m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
+        m.ingest({"source": "user", "entity": sid, "signal": "outcome.user_correction", "value": False, "ts": clock[0]})
 
     s, ms = SensorSource(E), MSUsageSource(m, U.MODEL_VERSION)
     B = DecisionContextBuilder([s, ms])
