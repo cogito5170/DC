@@ -1,12 +1,17 @@
 """Decision Context 의 형(型). 전부 frozen dataclass 이고 모음은 tuple 이다 -- 만든 뒤 바꿀 수 없다.
 
+저장하는 것은 둘뿐이다(baseline BD-08 · PC-07 · SCHEMA §4.1):
+
+    Core             정책이 읽는 것. 목적@판본 · as_of · subject · 키별 [값(쓸 수 있을 때만), 유효성] · 제약 · 가능 행동 이름
+    Provenance       감사 · 재현 · explain. 키별 근거 종류 · 규칙@판 · 근거 참조 · 관측 시각 · 소스 유효성 · 문제 · 막힌 값,
+                     능력(입력 기록) · 못 하는 행동의 모자란 능력 · 빌더/소스 판본
+    DecisionContext  digest(core + provenance 전부의 sha256) + 위 둘. id = "dc-" + digest 앞 16 자(투영)
+
+투영(저장하지 않는다, `dc/project.py`): StateView(나이 · 신선도 · 필수 여부를 붙인 상태 하나) · Validity · Action 목록.
+`reason` 은 DC 에 없다 -- 원 수치가 새어 들고(I1) 크기가 core 만큼이다(SCHEMA §4.4). 사람이 읽을 까닭은 소스의 explain 에서.
+
     StateRecord      소스(State 층)가 준 상태 하나. DC 는 이것을 **계산하지 않는다** -- 받아서 검사할 뿐이다
-    StateView        결정 문맥 안의 상태 하나. 값 + 유효성 + 신선도 + 근거 + DC 가 찾은 문제(issues)
     Constraint       단단한 제약(정책이 넘으면 안 되는 선). 목적함수가 아니다
-    Action           이번 결정에서 구조적으로 실행 가능한 행동. **고르는 것은 정책**이다
-    Validity         문맥 전체의 판정: 완결인가, 무엇이 불확실한가, 무엇을 거절했나
-    Provenance       어느 소스 · 어느 판본 · 어느 목적 명세 · 어느 빌더에서 나왔나
-    DecisionContext  위를 묶은 고정 스냅숏. id 는 내용의 해시다(같은 입력 -> 같은 id)
 
 상태 값의 유효성 이름은 Sensor(llmsensor.state.Status)와 같다. 소스 쪽 import 는 하지 않는다 -- 문자열로만 맞춘다.
 """
@@ -59,7 +64,6 @@ class StateRecord:
     rule_id: str = ""
     rule_version: "str | int | None" = None
     evidence_refs: tuple = ()
-    reason: str = ""
     observed_at_ms: "float | None" = None
     ttl_ms: "float | None" = None
     permanent: bool = False              # 끝난 일에 대한 사실 -- 낡지 않는다
@@ -73,46 +77,6 @@ class Issue:
 
     def to_dict(self) -> dict:
         return {"code": self.code, "detail": self.detail}
-
-
-@dataclass(frozen=True)
-class StateView:
-    key: str                     # 문맥 안 이름: "<역할>.<상태>" 또는 "<역할>[<꼬리>].<상태>"
-    role: str
-    entity: str
-    name: str
-    source: str
-    required: bool
-    value: object                # 소스가 준 값 그대로(STALE · INVALID 여도 남긴다 -- 설명을 위해). 쓸지는 usable 이 정한다
-    status: str                  # DC 의 판정 뒤 유효성
-    source_status: str           # 소스가 말한 유효성
-    freshness: str
-    age_ms: "float | None"
-    ttl_ms: "float | None"       # 실제로 적용한 TTL(소스 TTL 과 목적 max_age 중 엄한 것)
-    observed_at_ms: "float | None"
-    basis: str
-    rule_id: str
-    rule_version: "str | int | None"
-    evidence_refs: tuple
-    reason: str
-    issues: tuple = ()           # Issue
-
-    @property
-    def usable(self) -> bool:
-        return self.status in USABLE
-
-    def to_dict(self) -> dict:
-        return {"key": self.key, "role": self.role, "entity": self.entity, "name": self.name, "source": self.source,
-                "required": self.required, "value": self.value, "status": self.status,
-                "source_status": self.source_status, "freshness": self.freshness, "age_ms": self.age_ms,
-                "ttl_ms": self.ttl_ms, "observed_at_ms": self.observed_at_ms, "basis": self.basis,
-                "rule_id": self.rule_id, "rule_version": self.rule_version, "evidence_refs": list(self.evidence_refs),
-                "reason": self.reason, "issues": [i.to_dict() for i in self.issues]}
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "StateView":
-        return cls(**{**d, "evidence_refs": tuple(d["evidence_refs"]),
-                      "issues": tuple(Issue(**i) for i in d["issues"])})
 
 
 CONSTRAINT_OPS = ("<=", ">=", "==", "in")
@@ -155,6 +119,7 @@ class Action:
 
 @dataclass(frozen=True)
 class Validity:
+    """투영 -- core 의 유효성과 목적 명세(필수 여부)에서 다시 계산한다. 저장하지 않는다."""
     complete: bool               # 필수 상태가 전부 판정되었나(쓸 수 있음 또는 NOT_APPLICABLE)
     usable: tuple = ()           # 키
     uncertain: tuple = ()        # "키=유효성" -- UNKNOWN · STALE · INVALID
@@ -165,88 +130,205 @@ class Validity:
     def to_dict(self) -> dict:
         return {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.__dict__.items()}
 
+
+# -- 저장되는 것: core ------------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CoreState:
+    key: str                     # "<역할>.<상태>" 또는 "<역할>[<꼬리>].<상태>"
+    value: object                # 쓸 수 있을 때만(또는 목적이 그 키에 allow_stale 을 선언했고 STALE 일 때). 아니면 None
+    status: str                  # DC 판정 뒤 유효성
+
+
+@dataclass(frozen=True)
+class Core:
+    purpose: str
+    purpose_version: str
+    as_of: tuple                 # ((소스, 지금 ms), ...) -- 빌더에 준 '지금'. 빌더는 시계를 읽지 않는다
+    subject: tuple               # ((역할, 실체 또는 실체 tuple), ...)
+    states: tuple                # CoreState, 목적 명세의 순서
+    constraints: tuple           # Constraint
+    actions: tuple               # 가능한 행동 이름
+
+    def to_dict(self) -> dict:
+        return {"purpose": self.purpose, "purpose_version": self.purpose_version,
+                "as_of": {k: v for k, v in self.as_of},
+                "subject": {r: (list(e) if isinstance(e, tuple) else e) for r, e in self.subject},
+                "states": {s.key: [s.value, s.status] for s in self.states},
+                "constraints": [c.to_dict() for c in self.constraints], "actions": list(self.actions)}
+
     @classmethod
-    def from_dict(cls, d: dict) -> "Validity":
-        return cls(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in d.items()})
+    def from_dict(cls, d: dict) -> "Core":
+        return cls(d["purpose"], d["purpose_version"], tuple(sorted(d["as_of"].items())),
+                   tuple((r, tuple(e) if isinstance(e, list) else e) for r, e in sorted(d["subject"].items())),
+                   tuple(CoreState(k, v[0], v[1]) for k, v in sorted(d["states"].items())),
+                   tuple(Constraint.from_dict(c) for c in d["constraints"]), tuple(d["actions"]))
+
+
+# -- 저장되는 것: provenance ------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class StateProvenance:
+    key: str
+    role: str
+    entity: str
+    name: str
+    source: str
+    basis: str
+    rule_id: str
+    rule_version: "str | int | None"
+    evidence_refs: tuple         # 참조만 -- 사슬을 복사하지 않는다(BD-06)
+    observed_at_ms: "float | None"
+    ttl_ms: "float | None"       # 실제로 적용한 TTL(소스 TTL 과 목적 max_age 중 엄한 것) -- 입력 기록
+    permanent: bool
+    source_status: str
+    issues: tuple = ()           # Issue
+    withheld: object = None      # core 에 싣지 않은 소스 값(STALE · INVALID 등) -- 설명용. core 값이 있으면 None
+
+    def to_dict(self) -> dict:
+        return {"key": self.key, "role": self.role, "entity": self.entity, "name": self.name, "source": self.source,
+                "basis": self.basis, "rule_id": self.rule_id, "rule_version": self.rule_version,
+                "evidence_refs": list(self.evidence_refs), "observed_at_ms": self.observed_at_ms,
+                "ttl_ms": self.ttl_ms, "permanent": self.permanent, "source_status": self.source_status,
+                "issues": [i.to_dict() for i in self.issues], "withheld": self.withheld}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StateProvenance":
+        return cls(**{**d, "evidence_refs": tuple(d["evidence_refs"]),
+                      "issues": tuple(Issue(**i) for i in d["issues"])})
 
 
 @dataclass(frozen=True)
 class Provenance:
     builder: str                 # DC 빌더 판본
-    purpose_version: str         # 목적 명세 판본
     sources: tuple = ()          # ((소스 이름, ((판본 키, 값), ...)), ...)
+    capabilities: tuple = ()     # ((이름, 값), ...) -- 가능 행동을 정한 입력
+    missing: tuple = ()          # ((못 하는 행동, (모자란 능력, ...)), ...)
+    states: tuple = ()           # StateProvenance, core.states 와 같은 순서
 
     def to_dict(self) -> dict:
-        return {"builder": self.builder, "purpose_version": self.purpose_version,
-                "sources": {n: dict(v) for n, v in self.sources}}
+        return {"builder": self.builder, "sources": {n: dict(v) for n, v in self.sources},
+                "capabilities": {k: v for k, v in self.capabilities},
+                "missing": {a: list(m) for a, m in self.missing},
+                "states": [s.to_dict() for s in self.states]}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Provenance":
-        return cls(d["builder"], d["purpose_version"],
-                   tuple((n, tuple(sorted(v.items()))) for n, v in sorted(d["sources"].items())))
+        return cls(d["builder"], tuple((n, tuple(sorted(v.items()))) for n, v in sorted(d["sources"].items())),
+                   tuple(sorted(d["capabilities"].items())), tuple((a, tuple(m)) for a, m in sorted(d["missing"].items())),
+                   tuple(sorted((StateProvenance.from_dict(s) for s in d["states"]), key=lambda s: s.key)))
 
-
-@dataclass(frozen=True)
-class DecisionContext:
-    """이번 결정을 위해 알아야 할 것의 고정 스냅숏.
-
-    여기에 없는 것(일부러): 목적함수 · 가중치 · 선호(정책이 가진다), 고른 행동(정책이 고른다),
-    원 텔레메트리 · 지표 값(State 층 밖), LLM 에게 보일 글(LLM Context 는 이 다음 단계다).
-    """
-    id: str                      # "dc-" + digest 앞 16 자
-    digest: str                  # 아래 칸 전부의 정준 JSON 의 sha256
-    purpose: str
-    as_of: tuple                 # ((소스, 지금 ms), ...) -- 빌더에 준 '지금'. 빌더는 시계를 읽지 않는다
-    subject: tuple               # ((역할, 실체 또는 실체 tuple), ...)
-    states: tuple                # StateView
-    constraints: tuple           # Constraint
-    capabilities: tuple          # ((이름, 값), ...)
-    actions: tuple               # Action(가능 · 불가능 모두, 불가능은 까닭과 함께)
-    validity: Validity
-    provenance: Provenance
-
-    # -- 읽기 -------------------------------------------------------------------------------------------------
-    def state(self, key: str) -> StateView:
+    def state(self, key: str) -> StateProvenance:
         for s in self.states:
             if s.key == key:
                 return s
         raise KeyError(key)
 
+
+@dataclass(frozen=True)
+class DecisionContext:
+    """이번 결정을 위해 알아야 할 것의 고정 스냅숏 -- 저장하는 것은 digest · core · provenance 셋뿐이다.
+
+    여기에 없는 것(일부러): 목적함수 · 가중치 · 선호(정책이 가진다), 고른 행동(정책이 고른다),
+    원 텔레메트리 · 지표 값 · `reason`(State 층 밖), LLM 에게 보일 글(LLM Context 는 이 다음 단계다).
+    """
+    digest: str                  # core + provenance 의 정준 JSON 의 sha256
+    core: Core
+    provenance: Provenance
+    spec: object = field(default=None, compare=False, repr=False)   # 지은 목적 명세(투영용, 해시 · 직렬화 밖)
+
+    # -- core 읽기(정책) --------------------------------------------------------------------------------------
+    @property
+    def id(self) -> str:
+        return "dc-" + self.digest[:16]
+
+    @property
+    def purpose(self) -> str:
+        return self.core.purpose
+
+    @property
+    def as_of(self) -> tuple:
+        return self.core.as_of
+
+    @property
+    def subject(self) -> tuple:
+        return self.core.subject
+
+    @property
+    def constraints(self) -> tuple:
+        return self.core.constraints
+
+    @property
+    def available_actions(self) -> tuple:
+        return self.core.actions
+
     def keys(self) -> tuple:
-        return tuple(s.key for s in self.states)
+        return tuple(s.key for s in self.core.states)
+
+    def _core_state(self, key: str) -> CoreState:
+        for s in self.core.states:
+            if s.key == key:
+                return s
+        raise KeyError(key)
+
+    def status(self, key: str) -> str:
+        return self._core_state(key).status
 
     def value(self, key: str, allow_stale: bool = False):
-        """쓸 수 있을 때만 값, 아니면 None(=모름). STALE · INVALID 값을 '지금 값' 으로 내주지 않는다.
+        """쓸 수 있을 때만 값, 아니면 None(=모름).
 
-        allow_stale=True 는 **정책이 명시적으로** 낡은 값을 받겠다고 할 때만 쓴다(Sensor decision/context 에서 옮겨 옴, BD-05).
-        그때도 STALE 만 풀린다 -- UNKNOWN · INVALID · NOT_APPLICABLE 은 여전히 None 이다. 문맥 자체는 바뀌지 않는다."""
-        s = self.state(key)
-        if s.usable or (allow_stale and s.status == STALE):
+        STALE 값은 **목적 명세가 그 키에 allow_stale 을 선언했을 때만** core 에 실린다(CMD-D6). 그때도 정책이
+        allow_stale=True 로 부를 때만 내준다 -- 명세와 정책 둘 다 명시해야 낡은 값이 쓰인다. UNKNOWN · INVALID 는 늘 None."""
+        s = self._core_state(key)
+        if s.status in USABLE or (allow_stale and s.status == STALE):
             return s.value
         return None
 
     @property
-    def available_actions(self) -> tuple:
-        return tuple(a.name for a in self.actions if a.available)
+    def reuse_key(self) -> str:
+        """결정 재사용 열쇠(BD-37) -- as_of 를 뺀 core 의 해시. 상태 값 · 유효성 · 제약 · 가능 행동이 같으면 같다."""
+        from .snapshot import digest_of
+        d = self.core.to_dict()
+        d.pop("as_of")
+        return "rk-" + digest_of(d)[:16]
+
+    # -- 투영(저장하지 않는다) ------------------------------------------------------------------------------
+    def state(self, key: str):
+        from .project import view
+        return view(self, key)
+
+    @property
+    def states(self) -> tuple:
+        from .project import views
+        return views(self)
+
+    @property
+    def validity(self) -> "Validity":
+        from .project import validity
+        return validity(self)
+
+    @property
+    def actions(self) -> tuple:
+        from .project import actions
+        return actions(self)
+
+    @property
+    def capabilities(self) -> tuple:
+        return self.provenance.capabilities
 
     # -- 직렬화 -----------------------------------------------------------------------------------------------
     def body(self) -> dict:
-        """digest 를 뺀 내용. 해시는 이것의 정준 JSON 위에서 계산한다."""
-        return {"purpose": self.purpose, "as_of": {k: v for k, v in self.as_of},
-                "subject": {r: (list(e) if isinstance(e, tuple) else e) for r, e in self.subject},
-                "states": [s.to_dict() for s in self.states],
-                "constraints": [c.to_dict() for c in self.constraints],
-                "capabilities": {k: v for k, v in self.capabilities},
-                "actions": [a.to_dict() for a in self.actions],
-                "validity": self.validity.to_dict(), "provenance": self.provenance.to_dict()}
+        return {"core": self.core.to_dict(), "provenance": self.provenance.to_dict()}
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "digest": self.digest, **self.body()}
+        return {"digest": self.digest, **self.body()}
+
+    def core_dict(self) -> dict:
+        """정책 쪽으로 보내는 것(SCHEMA §4.3) -- id 와 core 만."""
+        return {"id": self.id, **self.core.to_dict()}
 
     def verify(self) -> bool:
         """내용이 digest 와 맞나 -- 만든 뒤 누가 (object.__setattr__ 로라도) 고쳤으면 False."""
         from .snapshot import digest_of
-        return digest_of(self.body()) == self.digest and self.id == "dc-" + self.digest[:16]
+        return digest_of(self.body()) == self.digest
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ MS 의 자리(`state_reader(usage_manager, sid) -> {"state", "record"}`)는 MS �
                       └─ DecisionContextBuilder.build(purpose="context_runtime", subject={"session": sid}, now_ms=…)
                       └─ policy_state(ctx, "session")  쓸 수 있는 상태만 값, 나머지 None(= MS 의 '모름 = 고정대로')
                  └─ ContextRuntime.plan(state) · ProviderPolicy.select(state)
-                 └─ RunRecord.policy.state_source = {id, digest, purpose, complete, uncertain}
+                 └─ MS DecisionRecord.state_source = {id, digest, purpose@판본, reuse_key, complete, uncertain}
 
 `last` 에 마지막 결정 문맥이 남는다(실행 기록의 digest 와 맞춰 볼 수 있다). `sink` 를 주면 문맥마다 불린다(감사 기록용).
 """
@@ -51,5 +51,5 @@ class MSStateReader:
                 state["model_version"] = model
         return {"state": state,
                 "record": {"id": ctx.id, "digest": ctx.digest, "purpose": ctx.purpose,
-                           "purpose_version": ctx.provenance.purpose_version, "complete": ctx.validity.complete,
-                           "uncertain": list(ctx.validity.uncertain)}}
+                           "purpose_version": ctx.core.purpose_version, "reuse_key": ctx.reuse_key,
+                           "complete": ctx.validity.complete, "uncertain": list(ctx.validity.uncertain)}}

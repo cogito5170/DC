@@ -100,8 +100,10 @@ class I3_StaleNeverValid(unittest.TestCase):
         ctx = build(now=NOW + 45 * MIN)
         v = ctx.state("agent.execution_health")
         self.assertEqual((v.status, v.freshness), ("STALE", "STALE"))
-        self.assertEqual(v.value, "UNRESOLVED_FAILURES")        # 값은 설명을 위해 남는다
-        self.assertIsNone(ctx.value("agent.execution_health"))   # 그러나 지금 값으로는 안 준다
+        self.assertIsNone(v.value)                                # core 에는 값이 없다(PC-07)
+        self.assertEqual(v.withheld, "UNRESOLVED_FAILURES")      # 설명용 값은 provenance 에
+        self.assertIsNone(ctx.value("agent.execution_health"))
+        self.assertIsNone(ctx.value("agent.execution_health", allow_stale=True))   # 명세가 선언 안 했다
         self.assertIn("STALE_TTL", [i.code for i in v.issues])
 
     def test_source_stale_is_not_revived_by_an_earlier_now(self):
@@ -166,14 +168,17 @@ class I4_Immutable(unittest.TestCase):
 
     def test_tampering_is_detected(self):
         ctx = build()
-        object.__setattr__(ctx.states[0], "value", "NO_FAILURE_OBSERVED")
+        object.__setattr__(ctx.core.states[0], "value", "NO_FAILURE_OBSERVED")
         self.assertFalse(ctx.verify())
+        ctx2 = build()
+        object.__setattr__(ctx2.provenance.states[0], "evidence_refs", ())       # provenance 도 digest 가 덮는다
+        self.assertFalse(ctx2.verify())
 
     def test_round_trip_and_tampered_record_is_refused(self):
         ctx = build(capabilities=CAPS, constraints=[Constraint("max_retries", "<=", 2)])
         d = json.loads(json.dumps(ctx.to_dict()))
         self.assertEqual(from_dict(d), ctx)
-        d["states"][0]["value"] = "NO_FAILURE_OBSERVED"
+        d["core"]["states"]["agent.execution_health"][0] = "NO_FAILURE_OBSERVED"
         with self.assertRaises(SnapshotError):
             from_dict(d)
 
@@ -201,7 +206,7 @@ class I5_Traceable(unittest.TestCase):
     def test_provenance_names_sources_and_versions(self):
         ctx = build("provider_selection")
         prov = ctx.provenance.to_dict()
-        self.assertEqual(prov["purpose_version"], "purpose-provider-3")
+        self.assertEqual(ctx.core.purpose_version, "purpose-provider-3")
         self.assertEqual(prov["sources"], {"ms": {"model": "usage-model-1"}, "sensor": {"config": "test-v1"}})
 
 
@@ -394,3 +399,58 @@ class Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoreProvenance(unittest.TestCase):
+    """PC-07 (baseline BD-08 · SCHEMA §4): core = 정책이 읽는 것, provenance = 감사 · 재현, 나머지는 투영. reason 없음."""
+
+    def test_no_reason_anywhere(self):
+        from dc import StateRecord
+        self.assertNotIn("reason", {f.name for f in dataclasses.fields(StateRecord)})
+        for p in PURPOSES:
+            self.assertNotIn('"reason"', json.dumps(build(p, capabilities=CAPS).to_dict(), ensure_ascii=False))
+
+    def test_core_holds_only_what_policy_reads(self):
+        c = build(capabilities=CAPS).core_dict()
+        self.assertEqual(set(c), {"id", "purpose", "purpose_version", "as_of", "subject", "states", "constraints",
+                                  "actions"})
+        for key, (value, status) in c["states"].items():
+            if status not in ("OBSERVED", "DERIVED", "INFERRED"):
+                self.assertIsNone(value, key)             # 쓸 수 없는 값은 core 에 없다
+        blob = json.dumps(c, ensure_ascii=False)
+        for prov_only in ("basis", "evidence_refs", "issues", "rule_id", "observed_at", "capabilities", "missing",
+                          "withheld", "ttl_ms"):
+            self.assertNotIn(prov_only, blob)
+
+    def test_value_lives_exactly_once(self):
+        ctx = build(now=NOW + 45 * MIN)
+        for cs, pv in zip(ctx.core.states, ctx.provenance.states):
+            self.assertEqual(cs.key, pv.key)
+            self.assertFalse(cs.value is not None and pv.withheld is not None, cs.key)
+
+    def test_reuse_key_ignores_as_of_but_not_state(self):
+        a, b = build(capabilities=CAPS), build(now=NOW + 1, capabilities=CAPS)
+        self.assertNotEqual(a.id, b.id)
+        self.assertEqual(a.reuse_key, b.reuse_key)
+        s = sensor_source()
+        s.put(rec("sensor", "agent:r1", "execution_health", "NO_FAILURE_OBSERVED"))
+        self.assertNotEqual(build(b=builder(sensor=s), capabilities=CAPS).reuse_key, a.reuse_key)
+        self.assertNotEqual(build(now=NOW + 45 * MIN, capabilities=CAPS).reuse_key, a.reuse_key)   # STALE 이 되면 다르다
+
+    def test_projection_needs_the_matching_spec(self):
+        from dc import SnapshotError  # noqa: F401
+        d = json.loads(json.dumps(build().to_dict()))
+        self.assertTrue(from_dict(d).validity is not None)                # 등록된 이름@판본이면 찾는다
+        strict = PURPOSES["execution_control"].tightened("purpose-execution-2-x", {"agent.execution_health": MIN})
+        d2 = json.loads(json.dumps(builder().build(strict, subject(), now_ms=NOW).to_dict()))
+        with self.assertRaises(LookupError):
+            from_dict(d2).validity                                         # 판본이 다른 명세로는 투영하지 않는다
+        self.assertTrue(from_dict(d2, purposes={strict.name: strict}).validity is not None)
+        self.assertEqual(from_dict(d2).value("agent.execution_health"), "UNRESOLVED_FAILURES")    # core 읽기는 명세 없이도
+
+    def test_core_is_a_small_part(self):
+        from dc.snapshot import canonical
+        for p in PURPOSES:
+            ctx = build(p, capabilities=CAPS)
+            core, full = len(canonical(ctx.core_dict()).encode()), len(canonical(ctx.to_dict()).encode())
+            self.assertLess(core * 2, full, p)

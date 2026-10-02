@@ -124,11 +124,21 @@ def main():
           f"{rec['context_policy']['params']['budget_chars']}")
         p(f"    state_source = {json.dumps(rec['state_source'], ensure_ascii=False)}")
 
-    section("6. 기록 꼴(to_dict) -- provider_selection, 줄임")
-    d = B.build("provider_selection", subj, now_ms=now(), capabilities=caps,
-                constraints=[Constraint("max_cost_usd", "<=", 0.10)]).to_dict()
-    d["states"] = d["states"][:2]
-    p(json.dumps(d, ensure_ascii=False, indent=1))
+    section("6. 기록 꼴 -- core(정책에 보내는 것) 전부 · provenance(같은 저장소에 두고 가리키는 것) 줄임 · 크기 (PC-07)")
+    from dc.snapshot import canonical
+    ctx = B.build("provider_selection", subj, now_ms=now(), capabilities=caps,
+                  constraints=[Constraint("max_cost_usd", "<=", 0.10)])
+    p("core_dict():")
+    p(json.dumps(ctx.core_dict(), ensure_ascii=False, indent=1))
+    pv = ctx.provenance.to_dict()
+    pv["states"] = pv["states"][:1]
+    p("provenance (states 는 하나만):")
+    p(json.dumps(pv, ensure_ascii=False, indent=1))
+    p(f"reuse_key = {ctx.reuse_key}   (as_of 를 뺀 core 의 해시, BD-37)")
+    for purpose in ("context_runtime", "context_policy", "prompt_policy", "provider_selection", "execution_control"):
+        c = B.build(purpose, subj, now_ms=now(), capabilities=caps)
+        core, full = len(canonical(c.core_dict()).encode()), len(canonical(c.to_dict()).encode())
+        p(f"  {purpose:<20} core {core:>5,} B / 전체 {full:>6,} B = {core / full:5.1%}")
 
     out = "\n".join(L) + "\n"
     (ROOT / "examples" / "demo_output.txt").write_text(out, encoding="utf-8")

@@ -46,7 +46,7 @@ class StaticSource:
     def read(self, entity, name, now_ms):
         r = self.records.get((entity, name))
         if r is None:
-            return StateRecord(self.name, entity, name, None, UNKNOWN, "OBSERVED", reason="표에 없다")
+            return StateRecord(self.name, entity, name, None, UNKNOWN, "OBSERVED")
         return r
 
     def domain(self, entity, name):
@@ -81,7 +81,7 @@ class SensorSource:
         d = self.engine.export_state(entity, name, now_ms)
         return StateRecord(self.name, d["entity"], d["name"], d["value"], d["status"], d["basis"] or "OBSERVED",
                            rule_id=d["rule_id"] or "", rule_version=d["rule_version"],
-                           evidence_refs=tuple(d["evidence_refs"]), reason=d["reason"], observed_at_ms=d["observed_at"],
+                           evidence_refs=tuple(d["evidence_refs"]), observed_at_ms=d["observed_at"],
                            ttl_ms=d["ttl_ms"], permanent=bool(d["final"]), since_ms=d["since"])
 
     def domain(self, entity, name):
@@ -135,19 +135,17 @@ class MSUsageSource:
     def read(self, entity, name, now_ms):
         node, model = self._model(entity)
         if node is None:
-            return StateRecord(self.name, entity, name, None, UNKNOWN, "OPERATOR_ASSUMED", reason="MS 에 없는 실체")
+            return StateRecord(self.name, entity, name, None, UNKNOWN, "OPERATOR_ASSUMED")
         d = model.derived.get(name)
         rule_id = f"{node.model}.{name}"
         if d is None:
-            return StateRecord(self.name, entity, name, None, UNKNOWN, "OPERATOR_ASSUMED",
-                               reason=f"모형 {node.model} 에 없는 파생 상태")
+            return StateRecord(self.name, entity, name, None, UNKNOWN, "OPERATOR_ASSUMED")
         ttl = model.ttl_of(name)
         ttl_ms = None if ttl is None else ttl * 1000.0
         v = node.props.get(name)
         if v is None or not v.derived:
             return StateRecord(self.name, entity, name, None, UNKNOWN, "OPERATOR_ASSUMED", rule_id=rule_id,
-                               rule_version=self.model_version, ttl_ms=ttl_ms,
-                               reason="입력이 모자라 모름(모형은 기본값으로 메우지 않는다)")
+                               rule_version=self.model_version, ttl_ms=ttl_ms)
         inputs = sorted(d.inputs)
         refs = []
         for p in dict.fromkeys(_base_prop(x) for x in inputs):
@@ -157,8 +155,7 @@ class MSUsageSource:
             elif node.props.get(p) is not None:
                 refs.append(node.props[p].src)
         return StateRecord(self.name, entity, name, v.value, INFERRED, "OPERATOR_ASSUMED", rule_id=rule_id,
-                           rule_version=self.model_version, evidence_refs=tuple(refs),
-                           reason=f"{self.model_version}: 입력 {', '.join(inputs)}", observed_at_ms=v.ts * 1000.0,
+                           rule_version=self.model_version, evidence_refs=tuple(refs), observed_at_ms=v.ts * 1000.0,
                            ttl_ms=ttl_ms)
 
     def domain(self, entity, name):

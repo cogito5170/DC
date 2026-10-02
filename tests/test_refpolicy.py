@@ -8,7 +8,7 @@ import json
 import unittest
 from pathlib import Path
 
-from dc import ContextStore, DecisionContextBuilder, SensorSource, SnapshotError
+from dc import PURPOSES, ContextStore, DecisionContextBuilder, SensorSource, SnapshotError
 from refpolicy import context as cpol, execution as epol, provider as ppol
 
 from .helpers import MIN, NOW, builder, rec, sensor_source, subject
@@ -18,11 +18,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AllowStale(unittest.TestCase):
-    def test_policy_must_ask_for_stale_explicitly(self):
+    def test_spec_and_policy_must_both_ask_for_stale(self):
+        """CMD-D6: 목적 명세가 키마다 선언해야 STALE 값이 core 에 실리고, 정책도 allow_stale=True 로 불러야 받는다."""
         ctx = builder().build("execution_control", subject(), now_ms=NOW + 45 * MIN)
         self.assertEqual(ctx.state("agent.execution_health").status, "STALE")
-        self.assertIsNone(ctx.value("agent.execution_health"))
+        self.assertIsNone(ctx.value("agent.execution_health", allow_stale=True))       # 선언 없음 -> core 에 없다
+        P = PURPOSES["execution_control"].tightened("purpose-execution-2-stale-ok",
+                                                   allow_stale=("agent.execution_health",))
+        ctx = builder().build(P, subject(), now_ms=NOW + 45 * MIN)
+        self.assertIsNone(ctx.value("agent.execution_health"))                          # 정책이 명시 안 함
         self.assertEqual(ctx.value("agent.execution_health", allow_stale=True), "UNRESOLVED_FAILURES")
+        self.assertIsNone(ctx.value("runtime.rate_limit_state", allow_stale=True))      # 선언 안 한 키는 그대로
+        with self.assertRaises(Exception):
+            PURPOSES["execution_control"].tightened("x", allow_stale=("no.such",))
 
     def test_allow_stale_does_not_unlock_unknown_or_invalid(self):
         s = sensor_source()
@@ -46,12 +54,12 @@ class Store(unittest.TestCase):
 
     def test_refuses_tampered(self):
         a = builder().build("execution_control", subject(), now_ms=NOW)
-        object.__setattr__(a.states[0], "value", "NO_FAILURE_OBSERVED")
+        object.__setattr__(a.core.states[0], "value", "NO_FAILURE_OBSERVED")
         with self.assertRaises(SnapshotError):
             ContextStore().put(a)
         rows = ContextStore().dump()
         good = builder().build("execution_control", subject(), now_ms=NOW).to_dict()
-        good["states"][0]["value"] = "NO_FAILURE_OBSERVED"
+        good["core"]["states"]["agent.execution_health"][0] = "NO_FAILURE_OBSERVED"
         with self.assertRaises(SnapshotError):
             ContextStore().load(rows + [good])
 
@@ -116,7 +124,7 @@ class OnRealSensorStates(unittest.TestCase):
         c = self.ctx([self.mc(0, 100, cr=150000, win=200000), self.end()], "context_policy", now=late)
         self.assertEqual(c.state("agent.context_pressure").status, "STALE")
         self.assertEqual(cpol.decide(c).action, "KEEP")
-        self.assertEqual(c.value("agent.context_pressure", allow_stale=True), "ABOVE_COMPACTION_THRESHOLD")
+        self.assertIsNone(c.value("agent.context_pressure", allow_stale=True))         # 명세가 선언하지 않았다
 
     def test_provider_policy(self):
         c = self.ctx([self.mc(0, 100), self.end(api_error_status="429")], "provider_selection")

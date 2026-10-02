@@ -56,7 +56,9 @@ ctx = B.build("provider_selection",
               constraints=[Constraint("max_cost_usd", "<=", 0.10)],
               capabilities={"alternate_provider": True, "retry_budget": True})
 
-ctx.id                      # "dc-…" 내용 해시 -- 실행 기록에 남겨 결정과 묶는다
+ctx.id                      # "dc-…" 내용 해시 -- 결정 기록에 남겨 결정과 묶는다
+ctx.core_dict()             # 정책에 보내는 것(core) -- 키별 [값 | null, 유효성] · 제약 · 가능 행동. 근거 · 문제는 ctx.provenance
+ctx.reuse_key               # as_of 를 뺀 core 의 해시 -- 결정 재사용 열쇠(BD-37)
 ctx.validity.complete       # 필수 상태가 전부 판정되었나
 ctx.value("runtime.rate_limit_state")   # 쓸 수 있을 때만 값, 아니면 None
 ctx.available_actions       # ("KEEP_PROVIDER", "SWITCH_PROVIDER", "RETRY", "STOP")
@@ -66,7 +68,7 @@ policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이
 목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 73 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 79 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
 python3 eval/policy_impact.py                    # 시험 정책(refpolicy)으로 결정 문맥이 결정을 바꾸나 -- Sensor 레코드 301 실행
 ```
@@ -90,5 +92,5 @@ python3 eval/policy_impact.py                    # 시험 정책(refpolicy)으�
 - **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 두 저장소는 서로 import 하지 않고, MS 의
   `state_reader` 이음매(함수 꼴 하나)로만 맞물린다. 안 꽂으면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. 자세히: 설계 문서 7 절.
 - MS 파생 상태의 시각은 입력 중 가장 오래된 것(예산 설정 포함)이라, MS 상태에 엄한 max_age 를 걸면 늘 STALE 이 된다.
-- `reason` 문자열 안의 수는 남는다(Sensor 와 같은 예외). 정책은 reason 을 해석하지 않는다.
+- `reason` 은 DC 에 없다(PC-07). 사람이 읽을 까닭은 소스(Sensor `explain`)에서.
 - 낡은 상태를 '모름' 으로 돌리는 것이 더 나은 결정을 낳는지는 **재지 않았다** — 설계 선택이다.
