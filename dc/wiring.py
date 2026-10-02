@@ -10,7 +10,7 @@ MS 의 자리(`state_reader(usage_manager, sid[, request]) -> {"state", "record"
                       └─ policy_state(ctx, "session")  쓸 수 있는 상태만 값, 나머지 None(= MS 의 '모름 = 고정대로')
                       └─ queries = {이름: core 질의}   CR 은 그래프에 직접 묻지 않고 이것으로 맥락을 짓는다
                  └─ ContextRuntime.plan(state) · ProviderPolicy.select(state)
-                 └─ MS DecisionRecord.state_source = {id, digest, purpose@판본, reuse_key, complete, uncertain, default_action[, queries]}
+                 └─ MS DecisionRecord.state_source = {id, digest, purpose@판본, reuse_key, complete, uncertain, default_action, role[, queries]}
 
 요청 질의는 **목적이 요청 질의를 받는 소스(`query_sources`)가 빌더에 다 꽂혀 있을 때만** 넘긴다. 아니면(세계 그래프 소스 없이 사용 상태만
 꽂은 리더) 질의를 돌리지 않고 `queries` 를 돌려주지 않는다 -- MS 가 예전처럼 스스로 그래프에 묻는다. 질의의 `allow_stale`(BD-65)은
@@ -75,7 +75,8 @@ class MSStateReader:
                "record": {"id": ctx.id, "digest": ctx.digest, "purpose": ctx.purpose,
                           "purpose_version": ctx.core.purpose_version, "reuse_key": ctx.reuse_key,
                           "complete": ctx.validity.complete, "uncertain": list(ctx.validity.uncertain),
-                          "default_action": ctx.default_action}}      # 목적의 안전 기본 결정(BD-76 · BD-81) -- MS 가 읽는다
+                          "default_action": ctx.default_action,       # 목적의 안전 기본 결정(BD-76 · BD-81) -- MS 가 읽는다
+                          "role": self.role}}      # state 의 이름이 어느 역할의 상태인가 -- 문맥 키는 "<role>.<이름>" (BD-100)
         if qs is not None:
             out["queries"] = {q.name: q.to_dict() for q in ctx.core.queries}
         return out

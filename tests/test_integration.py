@@ -255,6 +255,7 @@ class WithMSRuntime(unittest.TestCase):
         self.assertTrue(mspolicy.replay(rec)["ok"])
         self.assertEqual(src["default_action"], "KEEP")                    # BD-81: 목적의 안전 기본 결정이 MS 결정 기록까지
         self.assertEqual(self.reader(rt.um, "session:s")["record"]["default_action"], self.reader.last.default_action)
+        self.assertEqual(src["role"], "session")                           # BD-100: MS 가 used_keys 를 역할 가정 없이 짓는다
 
     def test_stale_pressure_reaches_cr_as_unknown(self):
         from dc.purpose import CONTEXT_RUNTIME

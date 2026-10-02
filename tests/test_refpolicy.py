@@ -217,6 +217,22 @@ class NoToolRunYet(unittest.TestCase):
         self.assertIn("SOMETHING_NEW", d.reason)
 
 
+
+class ReaderRole(unittest.TestCase):
+    """BD-100 (CMD-D15): MSStateReader 의 record 에 role -- state 의 이름 + role 이 곧 문맥 키다(역할을 가정하지 않는다)."""
+
+    def test_record_names_the_role_and_state_keys_are_role_dot_name(self):
+        from dc import MSStateReader
+        for purpose, role, sid in (("agent_context", "agent", "agent:r1"), ("provider_selection", "runtime", "runtime:r1")):
+            r = MSStateReader(builder(), purpose, role=role, now_ms=NOW, subject=lambda s: subject())
+            out = r(None, sid)
+            self.assertEqual(out["record"]["role"], role)
+            keys = [f"{role}.{k}" for k in out["state"] if k not in ("model_version", "decision_context")]   # 둘은 메타 칸
+            self.assertTrue(keys)
+            self.assertTrue(all(k in r.last.keys() for k in keys), keys)
+            self.assertEqual(set(out), {"state", "record"})                 # 인자 둘 호출 · 칸은 그대로
+
+
 if __name__ == "__main__":
     unittest.main()
 
