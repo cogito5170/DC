@@ -148,6 +148,7 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 | `prompt_policy` | purpose-prompt-2 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
 | `provider_selection` | purpose-provider-4 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
 | `execution_control` | purpose-execution-3 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
+| `agent_tool_call` | purpose-agent-tool-call-1 (BD-123 B1 · CMD-D18) | agent: execution_health / *tool: tool_execution_health · agent: execution_interruption · resource_state · task: completion_state · progress_state · runtime: rate_limit_state* | require_tool_confirmation | PROCEED · HOLD · ESCALATE(human_reviewer) -- 에이전트(Claude Code)가 내려는 도구 호출 하나. 필수는 transcript 로 알 수 있는 것만(SDK 훅 rlo-SDK) |
 
 `context_policy` · `prompt_policy` 의 상태는 MS 의 `AdaptiveContext` · `AdaptivePrompt` 가 실제로 읽는 것과 같다
 (그래서 `policy_state(ctx, "session")` 을 그대로 넘길 수 있다).
@@ -172,6 +173,7 @@ core 의 일부라 문맥 id · `reuse_key` 에 들어간다. 정책 · MS 가 �
 | `context_runtime` · `context_policy` · `agent_context` | KEEP | KEEP |
 | `provider_selection` | KEEP_PROVIDER | KEEP_PROVIDER |
 | `execution_control` | ESCALATE, STOP | **STOP** |
+| `agent_tool_call` | HOLD (BD-114: Guard D 는 거절만 -- 모르면 그 호출을 하지 않는다) | HOLD |
 | `prompt_policy` | FULL_INSTRUCTION (BD-81: BD-23 의 '고정 프롬프트 계획' = MS `FIXED_PROMPT`) | FULL_INSTRUCTION |
 
 규칙(BD-76): 정책은 **필수 상태의 모름(None)을 지나쳐 다른 분기로 가지 않는다.** 필수 키를 쓸 수 없어 규칙이 정해지지 않으면 `default_action` 을

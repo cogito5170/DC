@@ -219,6 +219,28 @@ EXECUTION_CONTROL = Purpose(
     default_decision=("ESCALATE", "STOP"),      # 사람이 없으면 남는 보수적 행동이 STOP (BD-23)
 )
 
+# 에이전트(Claude Code 등)의 도구 호출 하나를 판정한다 -- SDK 훅(rlo-SDK)이 PreToolUse 에서 짓는다(baseline BD-123 B1 · CMD-D18).
+# 필수는 **transcript 로 알 수 있는 것만**: 실행 건강(도구 결과로 정한다). 요금 한도 · 정체는 Claude Code transcript 에서 대개 서지 않아
+# (API 오류 줄 · 정체 문턱) 필수로 두면 정상일 때도 문맥이 불완전하고 Guard D 가 위험 도구를 늘 막는다 -- 그래서 선택이다.
+# 선택지: 이 호출을 하게 둔다(PROCEED) · 하지 않는다(HOLD) · 사람에게 묻는다(ESCALATE). 실행기 행동이 아니다 -- Guard 는 D 에서 거절만 한다
+# (BD-114). 기본은 HOLD: 모르면 그 호출을 하지 않는 쪽이 BD-114 의 거절과 같은 뜻이다.
+AGENT_TOOL_CALL = Purpose(
+    name="agent_tool_call", version="purpose-agent-tool-call-1",
+    meaning="에이전트가 지금 내려는 도구 호출 하나를 하게 둘지 · 막을지 · 사람에게 물을지 정하기 위해 알아야 할 것",
+    refs=(StateRef(S, "agent", "execution_health"),
+          StateRef(S, "tool", "tool_execution_health", required=False),
+          StateRef(S, "agent", "execution_interruption", required=False),
+          StateRef(S, "task", "completion_state", required=False),
+          StateRef(S, "task", "progress_state", required=False),
+          StateRef(S, "runtime", "rate_limit_state", required=False),
+          StateRef(S, "agent", "resource_state", required=False)),
+    constraints=("require_tool_confirmation",),
+    actions=(ActionSpec("PROCEED", meaning="이 도구 호출을 하게 둔다"),
+             ActionSpec("HOLD", meaning="이 도구 호출을 하지 않는다"),
+             ActionSpec("ESCALATE", ("human_reviewer",), "사람에게 묻는다 -- 사람이 붙어 있어야")),
+    default_decision=("HOLD",),
+)
+
 # 에이전트 런타임 자신의 맥락(예: Claude Code 자동 압축) -- MS 가 LLM 에 무엇을 보일지(context_policy)와 다른 결정이다(baseline BD-58 · PC-15).
 AGENT_CONTEXT = Purpose(
     name="agent_context", version="purpose-agent-context-2",     # -2: default_decision KEEP
@@ -251,4 +273,4 @@ CONTEXT_RUNTIME = Purpose(
 )
 
 PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME,
-                                AGENT_CONTEXT)}
+                                AGENT_CONTEXT, AGENT_TOOL_CALL)}
