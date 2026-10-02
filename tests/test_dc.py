@@ -14,7 +14,7 @@ import re
 import unittest
 from pathlib import Path
 
-from dc import (PURPOSES, Constraint, DecisionContextBuilder, PurposeError, SnapshotError, SourceError, StateRef,
+from dc import (PURPOSES, Constraint, DecisionContextBuilder, MSStateReader, PurposeError, SnapshotError, SourceError, StateRef,
                 StaticSource, from_dict, policy_state)
 from dc.purpose import CONTEXT_POLICY, Purpose, is_objective_word
 
@@ -348,6 +348,38 @@ class Stages(unittest.TestCase):
             CONTEXT_POLICY.tightened(CONTEXT_POLICY.version, {})
         with self.assertRaises(PurposeError):
             builder().build("nope", subject(), now_ms=NOW)
+
+
+class Wiring(unittest.TestCase):
+    """MS Runtime 의 state_reader 꼴(MS 없이): {"state": {상태: 값 | None}, "record": {...}}."""
+
+    def test_reader_returns_ms_shape_and_records_the_context(self):
+        seen = []
+        r = MSStateReader(builder(), now_ms=NOW, sink=seen.append)
+        out = r(None, "session:s1")
+        names = {x.name for x in PURPOSES["context_runtime"].refs}
+        self.assertEqual(set(out["state"]) - {"decision_context", "model_version"}, names)
+        self.assertEqual(out["state"]["model_version"], "usage-model-1")
+        self.assertEqual(out["record"]["id"], r.last.id)
+        self.assertEqual(out["state"]["decision_context"], r.last.id)
+        self.assertEqual(seen, [r.last])
+        json.dumps(out)
+
+    def test_reader_passes_unknown_as_none(self):
+        ms = ms_source(values={"answer_reliability": None})
+        out = MSStateReader(builder(ms=ms), now_ms=NOW)(None, "session:s1")
+        self.assertIsNone(out["state"]["answer_reliability"])
+        self.assertFalse(out["record"]["complete"])
+        self.assertIn("session.answer_reliability=UNKNOWN", out["record"]["uncertain"])
+
+    def test_reader_needs_a_now_it_can_trust(self):
+        with self.assertRaises(ValueError):           # StaticSource 는 '지금' 을 모른다 -- 빌더도 리더도 시계를 지어내지 않는다
+            MSStateReader(builder())(None, "session:s1")
+
+    def test_context_actions_use_ms_vocabulary(self):
+        ms_actions = ("KEEP", "SUMMARIZE", "RETRIEVE", "DROP", "DEFER", "COMPRESS")      # ms/context.py ACTIONS
+        for p in ("context_policy", "context_runtime"):
+            self.assertEqual(sorted(a.name for a in PURPOSES[p].actions), sorted(ms_actions))
 
 
 if __name__ == "__main__":

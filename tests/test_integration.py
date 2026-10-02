@@ -28,6 +28,10 @@ def _load(path: Path, mod: str):
 
 demo = _load(SENSOR, "eval.state_demo")
 msmanager, msusage, mspolicy = (_load(MS, m) for m in ("ms.manager", "ms.usage_model", "ms.policy"))
+msruntime = _load(MS, "ms.runtime")
+# usage-model-3 부터 DENY 신호 이름이 arbiter_denies 다(WALP 를 뺐다)
+DENY_SIG = ("interaction.arbiter_denies" if msusage and "arbiter_denies" in msusage.SESSION["properties"]
+            else "interaction.walp_denies")
 
 
 @unittest.skipIf(demo is None, f"Sensor 저장소가 없다: {SENSOR}")
@@ -90,11 +94,12 @@ class WithMS(unittest.TestCase):
                                                        "latency_budget_ms": 8000})
         sig = {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 2000,
                "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
-               "interaction.proposal_invalid": 0, "interaction.walp_denies": 0, "task.matched_rows": 5}
-        for k, v in sig.items():
-            self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": k, "value": v, "ts": self.clock[0]})
-        self.m.ingest({"source": "user", "entity": self.sid, "signal": "outcome.user_correction", "value": False,
-                       "ts": self.clock[0]})
+               "interaction.proposal_invalid": 0, DENY_SIG: 0, "task.matched_rows": 5}
+        for _ in range(3):           # usage-model-2 부터 품질 상태는 표본 3 개 이상에서만 판정한다
+            for k, v in sig.items():
+                self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": k, "value": v, "ts": self.clock[0]})
+            self.m.ingest({"source": "user", "entity": self.sid, "signal": "outcome.user_correction", "value": False,
+                           "ts": self.clock[0]})
         self.src = MSUsageSource(self.m, msusage.MODEL_VERSION)
         self.b = DecisionContextBuilder([self.src])
 
@@ -148,6 +153,65 @@ class WithMS(unittest.TestCase):
         self.assertAlmostEqual(v.age_ms, 200_000)
 
 
+@unittest.skipIf(msruntime is None or "state_reader" not in getattr(getattr(msruntime, "Runtime", None), "__init__",
+                                                                     lambda: 0).__code__.co_varnames,
+                 "MS Runtime 에 state_reader 자리가 없다")
+class WithMSRuntime(unittest.TestCase):
+    """진짜 MS Runtime(모의 provider)에 MSStateReader 를 꽂는다 -- CR 이 결정 문맥을 거친 상태를 본다."""
+
+    def _rt(self, purpose="context_runtime"):
+        import json as _j
+        from ms.providers import make_provider
+        from ms.tools import ToolRegistry
+        from dc import MSStateReader
+        spec = _j.loads((MS / "ms/examples/datacenter.json").read_text(encoding="utf-8"))
+        self.clock = [float(spec["now"])]
+        m = msmanager.StateManager.from_spec(spec, clock=lambda: self.clock[0])
+        for line in (MS / "ms/examples/datacenter_telemetry.jsonl").read_text(encoding="utf-8").splitlines():
+            m.ingest(_j.loads(line))
+        self.src = MSUsageSource(m, msusage.MODEL_VERSION)
+        self.reader = MSStateReader(DecisionContextBuilder([self.src]), purpose)
+        self.m = m
+        rt = msruntime.Runtime(m, ToolRegistry(spec["tools"]), {"sim-claude": make_provider("sim-claude")},
+                               context_selector=mspolicy.AdaptiveContext(), prompt_selector=mspolicy.AdaptivePrompt(),
+                               base_context={"budget_chars": 1500}, state_reader=self.reader)
+        rt.open_session("s", {"token_budget": 300, "context_budget": 200, "latency_budget_ms": 5000})
+        return spec, rt
+
+    def _go(self, rt, spec):
+        return rt.handle({"session": "s", "task": "srv07 을 throttle", "queries": spec["queries"]})["record"]
+
+    def test_runtime_records_the_context_it_used(self):
+        from dc import from_dict
+        spec, rt = self._rt()
+        self._go(rt, spec)
+        rec = self._go(rt, spec)
+        src = rec["policy"]["state_source"]
+        self.assertEqual((src["kind"], src["id"], src["purpose"]), ("state_reader", self.reader.last.id,
+                                                                    "context_runtime"))
+        again = from_dict(self.reader.last.to_dict())                    # 기록에서 되살려도 digest 가 맞다
+        self.assertEqual(again.digest, src["digest"])
+        snap = msusage.snapshot(self.m, "session:s")
+        for k in msusage.STATES:                                         # 신선하면 스냅숏과 같은 값
+            if k in rec["policy"]["state"] and k != "tool_churn":
+                self.assertEqual(rec["policy"]["state"][k], snap[k], k)
+        self.assertEqual(rec["policy"]["state"]["token_budget_pressure"], "HIGH")
+        self.assertTrue(mspolicy.replay(rec["policy"])["ok"])
+
+    def test_stale_pressure_reaches_cr_as_unknown(self):
+        from dc.purpose import CONTEXT_RUNTIME
+        strict = CONTEXT_RUNTIME.tightened("purpose-cr-1-op60s", {"session.token_budget_pressure": 60_000,
+                                                                  "session.context_pressure": 60_000})
+        spec, rt = self._rt(purpose=strict)
+        self._go(rt, spec)
+        self.clock[0] += 300                                             # 5 분 동안 새 실행이 없었다
+        rec = self._go(rt, spec)
+        self.assertEqual(msusage.snapshot(self.m, "session:s")["token_budget_pressure"], "HIGH")   # 스냅숏은 모른 척
+        self.assertIsNone(rec["policy"]["state"]["token_budget_pressure"])
+        self.assertEqual(rec["policy"]["context_policy"]["params"]["budget_chars"], 1500)          # 낡은 압력으로 줄이지 않았다
+        self.assertIn("session.token_budget_pressure=STALE", rec["policy"]["state_source"]["uncertain"])
+
+
 @unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")
 class BothSources(unittest.TestCase):
     def test_provider_selection_from_two_state_layers(self):
@@ -157,7 +221,7 @@ class BothSources(unittest.TestCase):
         m = msmanager.StateManager(clock=lambda: clock[0])
         sid = msusage.open_session(m, "s1", {"latency_budget_ms": 8000})
         for k, v in {"latency.total_ms": 9000, "interaction.llm_calls": 2, "interaction.proposal_invalid": 0,
-                     "interaction.walp_denies": 0}.items():
+                     DENY_SIG: 0}.items():
             m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
         s, ms = SensorSource(E), MSUsageSource(m, msusage.MODEL_VERSION)
         ctx = DecisionContextBuilder([s, ms]).build(

@@ -95,13 +95,21 @@ def is_objective_word(name: str) -> bool:
     return any(w in words for w in OBJECTIVE_WORDS)
 
 
-# -- 기본 목적 넷 -------------------------------------------------------------------------------------------------
+# -- 기본 목적 다섯 -------------------------------------------------------------------------------------------------
 # 소스 이름: "sensor" = llmsensor.state.StateEngine(실행 단위 의미 상태), "ms" = MS usage_model(세션 단위 사용 상태)
 S, M = "sensor", "ms"
 
+# 맥락 동작은 MS 의 어휘 그대로다(ms/context.py ACTIONS). 꺼내는 길(RETRIEVE · DEFER)은 retrieve 도구가 있어야 한다.
+MS_CONTEXT_ACTIONS = (ActionSpec("KEEP", meaning="행을 그대로 싣는다"),
+                      ActionSpec("COMPRESS", meaning="같은 행을 표 꼴로 짧게"),
+                      ActionSpec("SUMMARIZE", meaning="못 실은 행 묶음을 결정론적 집계로"),
+                      ActionSpec("RETRIEVE", ("retrieve_tool",), "못 실은 행을 손잡이로만 -- 꺼내는 도구가 있어야"),
+                      ActionSpec("DROP", meaning="droppable 행을 뺀다(must 제외)"),
+                      ActionSpec("DEFER", ("retrieve_tool",), "질의 하나를 통째로 미룬다 -- 꺼내는 도구가 있어야"))
+
 CONTEXT_POLICY = Purpose(
-    name="context_policy", version="purpose-context-1",
-    meaning="LLM 에게 무엇을 보일지(Context Policy)를 고르기 위해 알아야 할 것",
+    name="context_policy", version="purpose-context-2",
+    meaning="LLM 에게 무엇을 보일지(MS CR 의 Context Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(M, "session", "token_budget_pressure"),
           StateRef(M, "session", "context_pressure"),
           StateRef(M, "session", "task_complexity"),
@@ -110,12 +118,7 @@ CONTEXT_POLICY = Purpose(
           StateRef(S, "agent", "context_pressure", required=False),
           StateRef(S, "agent", "execution_health", required=False)),
     constraints=("max_context_chars", "must_keep"),
-    actions=(ActionSpec("KEEP", meaning="맥락을 그대로"),
-             ActionSpec("COMPRESS", meaning="같은 행을 더 짧게 그린다"),
-             ActionSpec("SUMMARIZE", meaning="행 묶음을 요약으로"),
-             ActionSpec("DROP", meaning="우선순위 낮은 행을 뺀다(must 제외)"),
-             ActionSpec("DEFER", ("retrieve_tool",), "나중에 꺼내도록 미룬다 -- 꺼내는 도구가 있어야"),
-             ActionSpec("COMPACT", ("runtime_compaction",), "런타임의 맥락 압축을 부른다")),
+    actions=MS_CONTEXT_ACTIONS,
 )
 
 PROMPT_POLICY = Purpose(
@@ -167,4 +170,20 @@ EXECUTION_CONTROL = Purpose(
              ActionSpec("STOP")),
 )
 
-PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL)}
+# MS CR(ms/cr.py) 의 plan(state) 한 번이 보는 것 전부: AdaptiveContext + AdaptivePrompt 가 읽는 세션 상태의 합집합.
+# MS Runtime 의 state_reader 자리에 꽂을 때 이 목적을 쓴다(dc/wiring.py). 프롬프트 쪽은 행동이 아니라 계획 칸이라 행동에 넣지 않았다.
+CONTEXT_RUNTIME = Purpose(
+    name="context_runtime", version="purpose-cr-1",
+    meaning="MS Context Runtime 이 이번 요청의 맥락 · 프롬프트 계획을 정하기 위해 알아야 할 것",
+    refs=(StateRef(M, "session", "token_budget_pressure"),
+          StateRef(M, "session", "context_pressure"),
+          StateRef(M, "session", "latency_pressure"),
+          StateRef(M, "session", "task_complexity"),
+          StateRef(M, "session", "answer_reliability"),
+          StateRef(M, "session", "correction_rate"),
+          StateRef(M, "session", "retry_pressure")),
+    constraints=("max_context_chars", "max_output_tokens", "tool_permission"),
+    actions=MS_CONTEXT_ACTIONS,
+)
+
+PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME)}

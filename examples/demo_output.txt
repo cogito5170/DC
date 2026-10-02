@@ -2,7 +2,7 @@
 ====================================================================================================
 1. 같은 State, 다른 목적 -> 다른 투영
 ====================================================================================================
-dc-0f4f74d762bafc09  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-6fe63983a5d24935  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   session.token_budget_pressure          HIGH                         INFERRED       FRESH     age=0s    
   session.context_pressure               MEDIUM                       INFERRED       FRESH     age=0s    
   session.task_complexity                LOW                          INFERRED       FRESH     age=0s    
@@ -11,9 +11,9 @@ dc-0f4f74d762bafc09  purpose=context_policy  as_of={'ms': 1000000.0, 'sensor': 1
   agent.context_pressure                 BELOW_COMPACTION_THRESHOLD   INFERRED       FRESH     age=0s    
   agent.execution_health                 UNRESOLVED_FAILURES          INFERRED       FRESH     age=0s    
   constraints: max_context_chars <= 3000
-  actions: KEEP, COMPRESS, SUMMARIZE, DROP, DEFER, (COMPACT: runtime_compaction 없음)
+  actions: KEEP, COMPRESS, SUMMARIZE, RETRIEVE, DROP, DEFER
 
-dc-7867ddce8b583948  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
+dc-656ab67426af196b  purpose=provider_selection  as_of={'ms': 1000000.0, 'sensor': 18550.0}  complete=True
   runtime.rate_limit_state               AVAILABLE                    INFERRED       FRESH     age=0s    
   runtime.runtime_reliability            NO_FAILURE_OBSERVED          INFERRED       FRESH     age=0s    
   session.latency_pressure               HIGH                         INFERRED       FRESH     age=0s    
@@ -70,11 +70,23 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
     DC:       token_budget_pressure=None -> budget 3000  (압력 LOW/모름 -> 고정과 같다)
 
 ====================================================================================================
-5. 기록 꼴(to_dict) -- provider_selection, 줄임
+5. MS Runtime 에 꽂기 -- Runtime(..., state_reader=MSStateReader(builder)), 모의 provider
+====================================================================================================
+  [context_runtime(기본)]
+    snapshot token_budget_pressure = HIGH
+    CR 이 본 것                    = HIGH  -> budget_chars 750
+    state_source = {"kind": "state_reader", "id": "dc-2f2b0354752388e0", "digest": "2f2b0354752388e083f72c175ae335515bc4fe058fcf1ad36a37c3a29e8529fc", "purpose": "context_runtime", "purpose_version": "purpose-cr-1", "complete": false, "uncertain": ["session.answer_reliability=UNKNOWN", "session.correction_rate=UNKNOWN"]}
+  [context_runtime + 압력 max_age 60 s(가정), 실행 사이 5 분]
+    snapshot token_budget_pressure = HIGH
+    CR 이 본 것                    = None  -> budget_chars 1500
+    state_source = {"kind": "state_reader", "id": "dc-86168c9f3a43d17d", "digest": "86168c9f3a43d17d81646126857795f7ba5d21f0d52093a37616d3bb2d70b418", "purpose": "context_runtime", "purpose_version": "purpose-cr-1-op60s", "complete": false, "uncertain": ["session.token_budget_pressure=STALE", "session.context_pressure=STALE", "session.answer_reliability=UNKNOWN", "session.correction_rate=UNKNOWN"]}
+
+====================================================================================================
+6. 기록 꼴(to_dict) -- provider_selection, 줄임
 ====================================================================================================
 {
- "id": "dc-9cd576f94f0346c7",
- "digest": "9cd576f94f0346c7c4dda5b1e2a16f690d61644200078b7fa5baf6d7933277f2",
+ "id": "dc-dabaefb12636da74",
+ "digest": "dabaefb12636da74fce2a9ecc5b9fc8d13d6abfadcd1f2950aed8dba064be0b4",
  "purpose": "provider_selection",
  "as_of": {
   "ms": 1300000.0,
@@ -208,7 +220,7 @@ dc-505b61ea931f63c1  purpose=execution_control  as_of={'sensor': 2718550.0}  com
   "purpose_version": "purpose-provider-1",
   "sources": {
    "ms": {
-    "model": "usage-model-1"
+    "model": "usage-model-3"
    },
    "sensor": {
     "config": "demo-v1",

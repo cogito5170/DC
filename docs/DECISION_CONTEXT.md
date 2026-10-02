@@ -96,7 +96,8 @@ StateView
 
 | 목적 | 판본 | 상태(필수 / *선택*) | 받는 제약 | 행동(필요 능력) |
 |---|---|---|---|---|
-| `context_policy` | purpose-context-1 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | KEEP · COMPRESS · SUMMARIZE · DROP · DEFER(retrieve_tool) · COMPACT(runtime_compaction) |
+| `context_runtime` | purpose-cr-1 | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
+| `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
 | `provider_selection` | purpose-provider-1 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · STOP |
 | `execution_control` | purpose-execution-1 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
@@ -136,29 +137,42 @@ Objective   토큰을 줄여라, 단 품질 >= 문턱         (Policy 소유 -- 
 | I6 | 결정 문맥은 정책을 정하지 않는다 | `I6_NoPolicyInside` -- 목적함수 · 고른 행동 칸 없음, 목적함수 낱말 제약 거절(명세를 우회해도 빌더가 막음), 행동은 상태와 무관, 패키지가 정책 · 프롬프트 · provider 를 import 안 함 |
 | I7 | LLM 출력은 결정 문맥의 상태를 고치지 못한다 | `I7_LLMCannotWrite` -- 권위 없는 소스 등록 거절, 쓰는 메서드 없음, ESTIMATE 근거 거절. 통합: Sensor `propose()` 뒤에도 digest 가 같다 |
 
-**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지 -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
+**시험이 헛돌지 않는지** 코드를 일부러 망가뜨려 봤다(2026-10-01). 변이 15 가지(배선 뒤 리더 3 가지 더) -- 소스 예외를 기본값으로 메움 · TTL 을 넘겨도
 STALE 로 안 바꿈 · 소스 STALE 을 되살림 · 다리가 STALE 값을 넘김 · frozen 끔 · digest 가 상태를 안 봄 · 근거 없음을 받음 ·
 목적함수 낱말을 받음 · 행동을 상태로 거름 · 권위 없는 소스 등록 · ESTIMATE 를 권위로 · 비스칼라 통과 · 값 집합 검사 끔 ·
 미래 관측 받음 · 목적 밖 상태를 끼움 -- 모두 빨개진다. 무해 대조(주석만 바꿈)는 초록으로 남는다. 처음 돌렸을 때
 "목적함수 낱말을 받음" 은 **초록이었다**(목적이 받는 제약 목록이 같은 것을 한 번 더 막아서 시험이 두 검사를 못 갈랐다) --
 명세를 우회한 목적으로 빌더의 검사만 따로 보는 시험을 더해 빨개졌다.
 
-## 7. 실행 흐름에서의 자리
+## 7. 실행 흐름에서의 자리 -- MS 런타임에 배선했다(2026-10-02)
+
+MS 가 CR(Context Runtime, `ms/cr.py`)을 세운 뒤(cr-1), MS 계획의 ③ Telemetry → DC · ④ DC → CR 자리에 꽂았다.
+**두 저장소는 서로를 import 하지 않는다.** 함수 꼴 하나로만 맞물린다:
 
 ```
-① Telemetry ─► ② Sensing ─► ③ State update
-                                  │
-                    ④ DecisionContextBuilder.build(purpose, subject, now_ms, constraints, capabilities)
-                                  │
-                    ⑤ DecisionContext (고정, id)
-                                  │
-              ⑥ Context Policy ─ ⑦ Prompt Policy ─ ⑧ Provider Policy    ← policy_state(ctx) 또는 ctx 그대로
-                                  │
-                    ⑨ LLM ─► ⑩ WALP ─► ⑪ Execution ─► ⑫ Telemetry (RunRecord 의 policy 칸에 ctx.id · digest)
+MS Runtime.handle(request)
+   └─ state_reader(usage_manager, sid) -> {"state": {상태: 값 | None}, "record": {...}}     ← MS 의 이음매(기본: usage_model.snapshot)
+         = dc.MSStateReader(builder, "context_runtime")
+              └─ DecisionContextBuilder.build(…)  ->  DecisionContext (고정, id)
+              └─ policy_state(ctx, "session")      쓸 수 있는 상태만 값, STALE · INVALID · UNKNOWN 은 None
+   └─ ContextRuntime.plan(state)  ·  ProviderPolicy.select(state)                          (MS 정책 규칙은 그대로)
+   └─ RunRecord.policy.state       = 위 state                                              (replay 가 그대로 돈다)
+      RunRecord.policy.state_source = {kind, id, digest, purpose, purpose_version, complete, uncertain}
 ```
 
-재현: 실행 기록에 `ctx.to_dict()`(또는 id · digest)를 남기면, 정책 재현(`ms.policy.replay`)이 "그 결정이 본 것" 을 digest 로
-확인할 수 있다. MS 쪽 배선(RunRecord 에 `decision_context` 를 남기기)은 **이번에 하지 않았다** -- 9 절.
+```python
+from dc import DecisionContextBuilder, MSUsageSource, MSStateReader
+reader = MSStateReader(DecisionContextBuilder([MSUsageSource(usage_manager, U.MODEL_VERSION)]), "context_runtime")
+rt = Runtime(manager, registry, providers, context_selector=AdaptiveContext(), prompt_selector=AdaptivePrompt(),
+             state_reader=reader)
+```
+
+MS 쪽 이음매가 지키는 것(MS `tests/test_runtime.py::StateReaderSeam`): 받은 `state` 는 사용 상태 이름(STATES)과 스칼라 값만 통과한다
+(원 측정 · 객체를 꽂아 넣으면 ValueError), 출처가 늘 기록된다(기본이면 `usage_model.snapshot`), 재현(`replay`)이 그대로 맞는다.
+DC 쪽(`tests/test_integration.py::WithMSRuntime`): 진짜 Runtime(모의 provider)에서 기록의 digest 가 리더의 마지막 문맥과 같고
+기록에서 되살려도 맞으며, 압력이 STALE 이면 CR 이 `None` 을 보고 맥락을 줄이지 않는다.
+
+재현: 기록의 `state_source.digest` 와 `ctx.to_dict()`(리더의 `last` 또는 `sink`)를 맞춰 "그 결정이 본 것" 을 확인한다.
 
 ## 8. 시연에서 본 것 (`examples/demo_output.txt`)
 
@@ -180,8 +194,14 @@ STALE 로 안 바꿈 · 소스 STALE 을 되살림 · 다리가 STALE 값을 넘
   예외다. 정책은 `reason` 을 해석하지 않는다(사람 · 로그용).
 - 두 소스의 '같은 현상' 을 맞대어 보는 교차 일관성 검사는 없다(예: Sensor `completion_state=ENDED` 인데 MS 가 아직 진행 중).
   어떤 쌍이 같은 것을 가리키는지의 근거가 아직 없어 규칙을 짓지 않았다.
-- **MS 런타임에 배선하지 않았다.** `Runtime.handle` 은 여전히 `usage_model.snapshot()` 을 정책에 준다. 바꾸려면 MS 가 DC 를
-  의존성으로 받아야 한다 -- 저장소 사이의 의존 방향은 사용자 결정이라 남겨 두었다.
+- **배선은 선택이다.** `state_reader` 를 안 주면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. CLI(`python3 -m ms ask`) ·
+  평가 하니스(`ms eval`)에는 아직 리더를 꽂는 옵션이 없다 -- 사전등록 칸을 바꾸는 일이라 MS 쪽 결정이 먼저다.
+- `RunRecord.policy` 에 결정 · 상태를 남기는 것은 L0 Telemetry 의 경계 점검(cogito5170/Telemetry `docs/TELEMETRY.md` 7 절)에 어긋난다고
+  MS 계획에 이미 적혀 있다. `state_source` 도 같은 칸에 붙였으므로, 그 칸을 결정 기록으로 뗄 때 함께 옮긴다.
+- 리더의 문맥은 MS 사용 상태만 본다(`context_runtime`). Sensor 상태를 CR 에 함께 주려면 리더에 `subject` 와 Sensor 소스 · '지금' 을
+  더하면 되지만, MS 정책 선택기는 Sensor 상태 이름을 읽지 않고 MS 이음매도 STATES 밖의 이름을 거절한다 -- 그것은 MS 계획 ②③ 의 일이다.
+- MS 초반(실행 3 개 전)에는 `answer_reliability` · `correction_rate` 가 UNKNOWN 이라(usage-model-2 의 표본 문턱) 문맥이 `complete=False` 다.
+  MS 정책은 그것을 고정대로 읽으므로 동작은 같다.
 - 목적의 상태 · 행동 목록은 손으로 정했다(MS 정책이 읽는 것 + Sensor 상태의 `decision` 칸에서). 판본을 올려 바꾼다.
 - Provider 선택 목적의 상태로 무엇이 좋은 선택을 가리키는지는 모른다(MS 도 아직 명시 선택뿐이다).
 - 스레드 안전하지 않다. 빌더는 소스를 차례로 읽으므로, 소스가 읽는 사이에 바뀌면 한 문맥 안의 상태들이 서로 다른 순간일

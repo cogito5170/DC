@@ -63,10 +63,10 @@ ctx.available_actions       # ("KEEP_PROVIDER", "SWITCH_PROVIDER", "RETRY", "STO
 policy_state(ctx, "session")            # MS 정책 선택기가 받는 꼴 {이름: 값 | None}
 ```
 
-목적 넷: `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
+목적 다섯: `context_runtime`(MS CR 에 꽂는 것) · `context_policy` · `prompt_policy` · `provider_selection` · `execution_control` (`dc/purpose.py`).
 
 ```bash
-python3 -m unittest discover -s tests -t .      # 49 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
+python3 -m unittest discover -s tests -t .      # 55 개. 옆 저장소(../Sensor · ../MS)가 있으면 통합 시험까지
 python3 examples/demo.py                         # 진짜 Sensor · MS State 로 시연
 ```
 
@@ -82,7 +82,8 @@ python3 examples/demo.py                         # 진짜 Sensor · MS State 로
 
 ## 알고 쓸 것
 
-- **MS 런타임에 아직 배선하지 않았다** — `Runtime.handle` 은 여전히 `usage_model.snapshot()` 을 쓴다. 저장소 사이 의존 방향은 결정이 필요하다.
+- **MS 런타임 배선**: `Runtime(..., state_reader=MSStateReader(builder, "context_runtime"))`. 두 저장소는 서로 import 하지 않고, MS 의
+  `state_reader` 이음매(함수 꼴 하나)로만 맞물린다. 안 꽂으면 MS 는 예전처럼 `usage_model.snapshot()` 을 쓴다. 자세히: 설계 문서 7 절.
 - MS 파생 상태의 시각은 입력 중 가장 오래된 것(예산 설정 포함)이라, MS 상태에 엄한 max_age 를 걸면 늘 STALE 이 된다.
 - `reason` 문자열 안의 수는 남는다(Sensor 와 같은 예외). 정책은 reason 을 해석하지 않는다.
 - 낡은 상태를 '모름' 으로 돌리는 것이 더 나은 결정을 낳는지는 **재지 않았다** — 설계 선택이다.

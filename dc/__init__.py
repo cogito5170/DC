@@ -11,6 +11,7 @@
     builder.py   Select -> Filter -> Validate -> Project -> Freeze
     snapshot.py  정준 JSON · 내용 해시 id · 기록에서 되살리기
     bridge.py    MS 정책 선택기가 받는 꼴로
+    wiring.py    MS Runtime 의 state_reader 자리에 꽂는 리더
 """
 from .model import (StateRecord, StateView, Constraint, Action, Issue, Validity, Provenance, DecisionContext, Subject,
                     USABLE, STATUSES)
@@ -19,8 +20,9 @@ from .sources import StaticSource, SensorSource, MSUsageSource, SourceError
 from .builder import DecisionContextBuilder, BUILDER_VERSION
 from .snapshot import from_dict, SnapshotError, digest_of
 from .bridge import policy_state, summary
+from .wiring import MSStateReader
 
 __all__ = ["StateRecord", "StateView", "Constraint", "Action", "Issue", "Validity", "Provenance", "DecisionContext",
            "Subject", "USABLE", "STATUSES", "Purpose", "StateRef", "ActionSpec", "PurposeError", "PURPOSES",
            "StaticSource", "SensorSource", "MSUsageSource", "SourceError", "DecisionContextBuilder", "BUILDER_VERSION",
-           "from_dict", "SnapshotError", "digest_of", "policy_state", "summary"]
+           "from_dict", "SnapshotError", "digest_of", "policy_state", "summary", "MSStateReader"]

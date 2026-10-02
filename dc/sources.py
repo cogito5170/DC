@@ -93,6 +93,14 @@ class SensorSource:
         return {"agent": f"agent:{run_id}", "task": f"task:{run_id}", "runtime": f"runtime:{run_id}", "tool": tools}
 
 
+def _base_prop(name: str) -> str:
+    """MS 의 `x__n`(창 안 표본 수) · `x__sum`(창 안 합)은 evidence 속성 x 에서 나온다 -- 근거는 x 의 창이다."""
+    for suf in ("__n", "__sum"):
+        if name.endswith(suf):
+            return name[: -len(suf)]
+    return name
+
+
 class MSUsageSource:
     """ms.manager.StateManager 의 **파생 상태**만 읽는다(evidence 창의 원 측정은 값으로 내지 않는다 -- id 만 근거로).
 
@@ -129,7 +137,7 @@ class MSUsageSource:
                                reason="입력이 모자라 모름(모형은 기본값으로 메우지 않는다)")
         inputs = sorted(d.inputs)
         refs = []
-        for p in inputs:
+        for p in dict.fromkeys(_base_prop(x) for x in inputs):
             win = self.manager.evidence.get(entity, {}).get(p)
             if win:
                 refs.extend(x.src for x in win)

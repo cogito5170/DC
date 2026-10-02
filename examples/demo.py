@@ -35,11 +35,13 @@ def main():
     clock = [1000.0]
     m = StateManager(clock=lambda: clock[0])
     sid = U.open_session(m, "s1", {"token_budget": 20000, "context_budget": 4000, "latency_budget_ms": 8000})
-    for k, v in {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 9000,
-                 "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
-                 "interaction.proposal_invalid": 0, "interaction.walp_denies": 0, "task.matched_rows": 5}.items():
-        m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
-    m.ingest({"source": "user", "entity": sid, "signal": "outcome.user_correction", "value": False, "ts": clock[0]})
+    deny = "interaction.arbiter_denies" if "arbiter_denies" in U.SESSION["properties"] else "interaction.walp_denies"
+    for _ in range(3):        # usage-model-2 부터 품질 상태는 표본 3 개 이상에서만 판정한다
+        for k, v in {"tokens.input_tokens": 19000, "tokens.context_tokens": 3000, "latency.total_ms": 9000,
+                     "interaction.llm_calls": 1, "interaction.retries": 0, "interaction.non_progress_rounds": 0,
+                     "interaction.proposal_invalid": 0, deny: 0, "task.matched_rows": 5}.items():
+            m.ingest({"source": "ms:run", "entity": sid, "signal": k, "value": v, "ts": clock[0]})
+        m.ingest({"source": "user", "entity": sid, "signal": "outcome.user_correction", "value": False, "ts": clock[0]})
 
     s, ms = SensorSource(E), MSUsageSource(m, U.MODEL_VERSION)
     B = DecisionContextBuilder([s, ms])
@@ -91,7 +93,38 @@ def main():
     p(f"    DC:       token_budget_pressure={st2['token_budget_pressure']} -> budget "
       f"{sel.plan(st2, {})['params']['budget_chars']}  ({'; '.join(sel.plan(st2, {})['reasons'])})")
 
-    section("5. 기록 꼴(to_dict) -- provider_selection, 줄임")
+    section("5. MS Runtime 에 꽂기 -- Runtime(..., state_reader=MSStateReader(builder)), 모의 provider")
+    from ms.providers import make_provider
+    from ms.runtime import Runtime
+    from ms.tools import ToolRegistry
+    from ms.policy import AdaptivePrompt
+    from dc import MSStateReader
+    from dc.purpose import CONTEXT_RUNTIME
+    spec = json.loads((MS / "ms/examples/datacenter.json").read_text(encoding="utf-8"))
+    for label, purpose, gap in (("context_runtime(기본)", "context_runtime", 0),
+                                ("context_runtime + 압력 max_age 60 s(가정), 실행 사이 5 분", CONTEXT_RUNTIME.tightened(
+                                    "purpose-cr-1-op60s", {"session.token_budget_pressure": 60_000,
+                                                           "session.context_pressure": 60_000}), 300)):
+        wclock = [float(spec["now"])]
+        wm = StateManager.from_spec(spec, clock=lambda: wclock[0])
+        for line in (MS / "ms/examples/datacenter_telemetry.jsonl").read_text(encoding="utf-8").splitlines():
+            wm.ingest(json.loads(line))
+        reader = MSStateReader(DecisionContextBuilder([MSUsageSource(wm, U.MODEL_VERSION)]), purpose)
+        rt = Runtime(wm, ToolRegistry(spec["tools"]), {"sim-claude": make_provider("sim-claude")},
+                     context_selector=AdaptiveContext(), prompt_selector=AdaptivePrompt(),
+                     base_context={"budget_chars": 1500}, state_reader=reader)
+        rt.open_session("s", {"token_budget": 300, "context_budget": 200, "latency_budget_ms": 5000})
+        req = {"session": "s", "task": "srv07 을 throttle", "queries": spec["queries"]}
+        rt.handle(req)
+        wclock[0] += gap
+        rec = rt.handle(req)["record"]["policy"]
+        p(f"  [{label}]")
+        p(f"    snapshot token_budget_pressure = {U.snapshot(wm, 'session:s')['token_budget_pressure']}")
+        p(f"    CR 이 본 것                    = {rec['state']['token_budget_pressure']}  -> budget_chars "
+          f"{rec['context_policy']['params']['budget_chars']}")
+        p(f"    state_source = {json.dumps(rec['state_source'], ensure_ascii=False)}")
+
+    section("6. 기록 꼴(to_dict) -- provider_selection, 줄임")
     d = B.build("provider_selection", subj, now_ms=now(), capabilities=caps,
                 constraints=[Constraint("max_cost_usd", "<=", 0.10)]).to_dict()
     d["states"] = d["states"][:2]
