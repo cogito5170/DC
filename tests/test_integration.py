@@ -210,24 +210,26 @@ class WithMSRuntime(unittest.TestCase):
         return spec, rt
 
     def _go(self, rt, spec):
-        return rt.handle({"session": "s", "task": "srv07 을 throttle", "queries": spec["queries"]})["record"]
+        out = rt.handle({"session": "s", "task": "srv07 을 throttle", "queries": spec["queries"]})
+        self.assertEqual(out["record"]["decision_ref"], out["decision"]["id"])    # 결정 내용은 결정 기록에(baseline BD-15)
+        return out["decision"]
 
     def test_runtime_records_the_context_it_used(self):
         from dc import from_dict
         spec, rt = self._rt()
         self._go(rt, spec)
         rec = self._go(rt, spec)
-        src = rec["policy"]["state_source"]
+        src = rec["state_source"]
         self.assertEqual((src["kind"], src["id"], src["purpose"]), ("state_reader", self.reader.last.id,
                                                                     "context_runtime"))
         again = from_dict(self.reader.last.to_dict())                    # 기록에서 되살려도 digest 가 맞다
         self.assertEqual(again.digest, src["digest"])
         snap = msusage.snapshot(self.m, "session:s")
         for k in msusage.STATES:                                         # 신선하면 스냅숏과 같은 값
-            if k in rec["policy"]["state"] and k != "tool_churn":
-                self.assertEqual(rec["policy"]["state"][k], snap[k], k)
-        self.assertEqual(rec["policy"]["state"]["token_budget_pressure"], "HIGH")
-        self.assertTrue(mspolicy.replay(rec["policy"])["ok"])
+            if k in rec["state"] and k != "tool_churn":
+                self.assertEqual(rec["state"][k], snap[k], k)
+        self.assertEqual(rec["state"]["token_budget_pressure"], "HIGH")
+        self.assertTrue(mspolicy.replay(rec)["ok"])
 
     def test_stale_pressure_reaches_cr_as_unknown(self):
         from dc.purpose import CONTEXT_RUNTIME
@@ -238,9 +240,9 @@ class WithMSRuntime(unittest.TestCase):
         self.clock[0] += 300                                             # 5 분 동안 새 실행이 없었다
         rec = self._go(rt, spec)
         self.assertEqual(msusage.snapshot(self.m, "session:s")["token_budget_pressure"], "HIGH")   # 스냅숏은 모른 척
-        self.assertIsNone(rec["policy"]["state"]["token_budget_pressure"])
-        self.assertEqual(rec["policy"]["context_policy"]["params"]["budget_chars"], 1500)          # 낡은 압력으로 줄이지 않았다
-        self.assertIn("session.token_budget_pressure=STALE", rec["policy"]["state_source"]["uncertain"])
+        self.assertIsNone(rec["state"]["token_budget_pressure"])
+        self.assertEqual(rec["context_policy"]["params"]["budget_chars"], 1500)          # 낡은 압력으로 줄이지 않았다
+        self.assertIn("session.token_budget_pressure=STALE", rec["state_source"]["uncertain"])
 
 
 @unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")

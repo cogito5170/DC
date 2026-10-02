@@ -117,7 +117,7 @@ def main():
         req = {"session": "s", "task": "srv07 을 throttle", "queries": spec["queries"]}
         rt.handle(req)
         wclock[0] += gap
-        rec = rt.handle(req)["record"]["policy"]
+        rec = rt.handle(req)["decision"]       # 정책이 본 것 · 출처는 결정 기록에(MS DecisionRecord)
         p(f"  [{label}]")
         p(f"    snapshot token_budget_pressure = {U.snapshot(wm, 'session:s')['token_budget_pressure']}")
         p(f"    CR 이 본 것                    = {rec['state']['token_budget_pressure']}  -> budget_chars "
