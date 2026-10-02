@@ -118,6 +118,8 @@ class DecisionContextBuilder:
             bad = StateRecord(ref.source, entity, ref.name, None, UNKNOWN, "OBSERVED")
             return _Sel(ref, entity, tail, bad,
                         issues=[Issue(SOURCE_ERROR, f"물은 것 {entity}.{ref.name}, 받은 것 {rec.entity}.{rec.name}")])
+        if tail is not None and rec.local:          # 여러 실체 역할: 소스가 가른 지역 이름을 쓴다(행동 id 에는 `:` 가 든다)
+            tail = rec.local
         return _Sel(ref, entity, tail, rec)
 
     # ---- 2. Filter(신선도) -----------------------------------------------------------------------------------

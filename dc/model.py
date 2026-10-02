@@ -70,6 +70,8 @@ class StateRecord:
     permanent: bool = False              # 끝난 일에 대한 사실 -- 낡지 않는다
     since_ms: "float | None" = None
     time_base: "str | None" = None       # unix_ms · monotonic_ms · None(모름) -- baseline BD-33
+    local: "str | None" = None           # 여러 실체 역할에서 이 실체의 지역 이름(소스가 가른 것, BD-32). 키 `역할[지역].이름` 에 쓴다.
+                                         # 없으면 빌더가 id 의 마지막 `:` 뒤로 가른다(도구 이름처럼 `:` 가 없을 때만 맞다)
 
 
 @dataclass(frozen=True)

@@ -329,6 +329,45 @@ class WithMSRuntime(unittest.TestCase):
         self.assertEqual((get("fleet"), get("fleet2")), (66.0, None))                 # 그 질의에서만
 
 
+
+@unittest.skipIf(demo is None, f"Sensor 저장소가 없다: {SENSOR}")
+class WithSensorActions(unittest.TestCase):
+    """CMD-D16: 실행기의 행동 실체(action:<실행>:<command_id>)가 state-export/2 를 거쳐 DC 주체 · 문맥 키에 맞게 실린다."""
+
+    def test_actions_reach_the_subject_with_their_own_local_name(self):
+        import itertools
+        try:
+            from telemetry.compat import to_sensor_records
+            from telemetry.hashing import Hasher
+            from telemetry.ledger import MemorySink
+            from telemetry.recorder import Recorder
+        except ImportError:
+            self.skipTest("Telemetry(L0) 가 없다")
+        from llmsensor.sensing.l0 import batches
+        from llmsensor.state import StateEngine, from_telemetry
+        from dc.purpose import ActionSpec, Purpose, StateRef
+        run, clock, mono, sink = "ms:r1", itertools.count(1_790_000_000_000, 1000), itertools.count(0, 10), MemorySink()
+        rec = Recorder(run, sink, source="inproc:ms", wall=lambda: next(clock), mono=lambda: next(mono),
+                       hasher=Hasher(b"k" * 32))
+        for ref, err in (("sha:ab:12", False), ("sha:cd:12", True)):     # 마지막 ':' 뒤가 같다 -- 그것으로 가르면 섞인다
+            with rec.action("RETURN", action_ref=ref) as a:
+                a.result(is_error=err, exit_code=1 if err else 0)
+        E = StateEngine()
+        E.ingest_all(from_telemetry(to_sensor_records(sink.events)))
+        E.ingest_all(batches(sink.events))
+        src = SensorSource(E, run_id=run)
+        subj = src.subject()
+        self.assertEqual(subj["action"], (f"action:{run}:sha:ab:12", f"action:{run}:sha:cd:12"))    # 고정 tuple
+        P = Purpose("verify_action", "t-1", (StateRef("sensor", "action", "action_state"),), actions=(ActionSpec("NOOP"),))
+        ctx = DecisionContextBuilder([src], purposes={P.name: P}).build(P, subj, now_ms=src.now_ms())
+        self.assertEqual(ctx.keys(), ("action[sha:ab:12].action_state", "action[sha:cd:12].action_state"))
+        self.assertEqual((ctx.value("action[sha:ab:12].action_state"), ctx.value("action[sha:cd:12].action_state")),
+                         ("COMPLETED", "FAILED"))
+        self.assertIn(("action", subj["action"]), ctx.core.subject)
+        self.assertEqual(ctx.state("action[sha:ab:12].action_state").entity, f"action:{run}:sha:ab:12")
+        self.assertEqual(src.subject()["tool"], ())                                 # 대조: 도구 역할은 그대로
+
+
 @unittest.skipIf(demo is None or msmanager is None, "Sensor · MS 둘 다 있어야")
 class BothSources(unittest.TestCase):
     def test_provider_selection_from_two_state_layers(self):

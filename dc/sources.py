@@ -83,7 +83,16 @@ class SensorSource:
                            rule_id=d["rule_id"] or "", rule_version=d["rule_version"],
                            evidence_refs=tuple(d["evidence_refs"]), observed_at_ms=d["observed_at"],
                            ttl_ms=d["ttl_ms"], permanent=bool(d["final"]), since_ms=d["since"],
-                           time_base=d["time_base"])
+                           time_base=d["time_base"], local=self._local(d))
+
+    @staticmethod
+    def _local(d):
+        """계약의 entity_ref 로 지역 이름을 -- 행동 id 처럼 `:` 를 품어도 맞다(CMD-D16). Sensor 가 못 가른 실체(scope null)는
+        id 전체를 지역 이름으로 써서 다른 실체와 섞이지 않게 한다."""
+        ref = d.get("entity_ref") or {}
+        if ref.get("local") is not None:
+            return ref["local"]
+        return d["entity"] if ref.get("scope") is None else None
 
     def domain(self, entity, name):
         st = self._catalog["states"].get(name)
@@ -97,7 +106,7 @@ class SensorSource:
     def subject(self, run_id: "str | None" = None) -> dict:
         s = dict(self.engine.subjects(run_id or self.run_id))
         s.pop("scope", None)                                  # 역할이 아니다 -- 실체 id 의 범위(BD-32)
-        return {**s, "tool": tuple(s["tool"])}
+        return {k: tuple(v) if isinstance(v, list) else v for k, v in s.items()}   # 여러 실체 역할(tool · action) -> 고정 tuple
 
     def now_ms(self) -> float:
         if self.run_id is None:
