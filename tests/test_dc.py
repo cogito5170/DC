@@ -206,7 +206,7 @@ class I5_Traceable(unittest.TestCase):
     def test_provenance_names_sources_and_versions(self):
         ctx = build("provider_selection")
         prov = ctx.provenance.to_dict()
-        self.assertEqual(ctx.core.purpose_version, "purpose-provider-3")
+        self.assertEqual(ctx.core.purpose_version, "purpose-provider-4")
         self.assertEqual(prov["sources"], {"ms": {"model": "usage-model-1"}, "sensor": {"config": "test-v1"}})
 
 
@@ -412,7 +412,7 @@ class CoreProvenance(unittest.TestCase):
 
     def test_core_holds_only_what_policy_reads(self):
         c = build(capabilities=CAPS).core_dict()
-        self.assertEqual(set(c), {"id", "purpose", "purpose_version", "as_of", "subject", "states", "constraints", "queries",
+        self.assertEqual(set(c), {"id", "purpose", "purpose_version", "as_of", "subject", "states", "constraints", "queries", "default_action",
                                   "actions"})
         for key, (value, status) in c["states"].items():
             if status not in ("OBSERVED", "DERIVED", "INFERRED"):

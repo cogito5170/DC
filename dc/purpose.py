@@ -84,6 +84,8 @@ class Purpose:
     meaning: str = ""
     queries: tuple = ()          # QueryRef -- 목적에 고정한 질의
     query_sources: tuple = ()    # 요청마다 질의를 받아도 되는 소스(CR 처럼 요청이 질의를 정할 때)
+    default_decision: tuple = ()  # 안전 기본 결정(baseline BD-23 · BD-76): 순서 있는 후보, 가능한 첫 행동. 규칙이 필수 상태를
+                                  # 몰라 정해지지 않을 때 정책이 쓴다. 비면 기본 결정이 없다
 
     def __post_init__(self):
         seen = set()
@@ -106,6 +108,9 @@ class Purpose:
         names = [a.name for a in self.actions]
         if len(set(names)) != len(names):
             raise PurposeError(f"{self.name}: 행동 이름이 겹친다")
+        bad_default = [a for a in self.default_decision if a not in names]
+        if bad_default:
+            raise PurposeError(f"{self.name}: 기본 결정 {bad_default} 이 행동 목록에 없다")
         qn = [q.name for q in self.queries]
         if len(set(qn)) != len(qn):
             raise PurposeError(f"{self.name}: 질의 이름이 겹친다")
@@ -144,7 +149,7 @@ MS_CONTEXT_ACTIONS = (ActionSpec("KEEP", meaning="행을 그대로 싣는다"),
                       ActionSpec("DEFER", ("retrieve_tool",), "질의 하나를 통째로 미룬다 -- 꺼내는 도구가 있어야"))
 
 CONTEXT_POLICY = Purpose(
-    name="context_policy", version="purpose-context-2",
+    name="context_policy", version="purpose-context-3",     # -3: default_decision KEEP (BD-23 · BD-76)
     meaning="LLM 에게 무엇을 보일지(MS CR 의 Context Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(M, "session", "token_budget_pressure"),
           StateRef(M, "session", "context_pressure"),
@@ -155,6 +160,7 @@ CONTEXT_POLICY = Purpose(
           StateRef(S, "agent", "execution_health", required=False)),
     constraints=("max_context_chars", "must_keep"),
     actions=MS_CONTEXT_ACTIONS,
+    default_decision=("KEEP",),
 )
 
 PROMPT_POLICY = Purpose(
@@ -176,7 +182,7 @@ PROMPT_POLICY = Purpose(
 )
 
 PROVIDER_SELECTION = Purpose(
-    name="provider_selection", version="purpose-provider-3",
+    name="provider_selection", version="purpose-provider-4",     # -4: default_decision KEEP_PROVIDER
     meaning="누구에게 물을지(Provider Policy)를 고르기 위해 알아야 할 것",
     refs=(StateRef(S, "runtime", "rate_limit_state"),
           StateRef(S, "runtime", "runtime_reliability"),
@@ -190,10 +196,11 @@ PROVIDER_SELECTION = Purpose(
              ActionSpec("RETRY", ("retry_budget",), "재시도 한도가 남아 있어야"),
              ActionSpec("WAIT", meaning="요금 한도 등이 풀릴 때까지 기다린다(Sensor 의 행동, BD-30)"),
              ActionSpec("STOP")),
+    default_decision=("KEEP_PROVIDER",),
 )
 
 EXECUTION_CONTROL = Purpose(
-    name="execution_control", version="purpose-execution-2",
+    name="execution_control", version="purpose-execution-3",     # -3: default_decision ESCALATE, 못 하면 STOP
     meaning="실행을 이어 갈지 · 다시 할지 · 멈출지 정하기 위해 알아야 할 것",
     refs=(StateRef(S, "agent", "execution_health"),
           StateRef(S, "tool", "tool_execution_health", required=False),
@@ -208,11 +215,12 @@ EXECUTION_CONTROL = Purpose(
              ActionSpec("RETRY", ("retry_budget",)),
              ActionSpec("ESCALATE", ("human_reviewer",), "사람이 붙어 있어야"),
              ActionSpec("STOP")),
+    default_decision=("ESCALATE", "STOP"),      # 사람이 없으면 남는 보수적 행동이 STOP (BD-23)
 )
 
 # 에이전트 런타임 자신의 맥락(예: Claude Code 자동 압축) -- MS 가 LLM 에 무엇을 보일지(context_policy)와 다른 결정이다(baseline BD-58 · PC-15).
 AGENT_CONTEXT = Purpose(
-    name="agent_context", version="purpose-agent-context-1",
+    name="agent_context", version="purpose-agent-context-2",     # -2: default_decision KEEP
     meaning="에이전트 런타임이 자기 맥락을 어떻게 다룰지(압축을 시킬지 · 덜어 낼지 · 그대로 둘지) 정하기 위해 알아야 할 것",
     refs=(StateRef(S, "agent", "context_pressure"),
           StateRef(S, "agent", "execution_interruption", required=False)),
@@ -220,12 +228,13 @@ AGENT_CONTEXT = Purpose(
     actions=(ActionSpec("KEEP", meaning="런타임 맥락을 그대로"),
              ActionSpec("REDUCE", meaning="런타임 맥락을 덜어 낸다(요약 없이 -- 새 대화 등)"),
              ActionSpec("COMPACT", ("runtime_compaction",), "런타임에 맥락 압축을 시킨다 -- 런타임이 압축을 할 수 있어야")),
+    default_decision=("KEEP",),
 )
 
 # MS CR(ms/cr.py) 의 plan(state) 한 번이 보는 것 전부: AdaptiveContext + AdaptivePrompt 가 읽는 세션 상태의 합집합.
 # MS Runtime 의 state_reader 자리에 꽂을 때 이 목적을 쓴다(dc/wiring.py). 프롬프트 쪽은 행동이 아니라 계획 칸이라 행동에 넣지 않았다.
 CONTEXT_RUNTIME = Purpose(
-    name="context_runtime", version="purpose-cr-2",     # -2: 요청 질의를 ms_world 에서 받는다(PC-23)
+    name="context_runtime", version="purpose-cr-3",     # -2: 요청 질의(PC-23) · -3: default_decision KEEP
     meaning="MS Context Runtime 이 이번 요청의 맥락 · 프롬프트 계획을 정하기 위해 알아야 할 것",
     refs=(StateRef(M, "session", "token_budget_pressure"),
           StateRef(M, "session", "context_pressure"),
@@ -237,6 +246,7 @@ CONTEXT_RUNTIME = Purpose(
     constraints=("max_context_chars", "max_output_tokens", "tool_permission"),
     actions=MS_CONTEXT_ACTIONS,
     query_sources=("ms_world",),
+    default_decision=("KEEP",),
 )
 
 PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME,

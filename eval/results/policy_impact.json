@@ -1,7 +1,7 @@
 {
  "runs": 301,
  "deterministic": true,
- "decision_digest": "2331d970e7776260",
+ "decision_digest": "c5afd5f44f9f9193",
  "assumptions": {
   "capabilities": {
    "alternate_provider": true,
@@ -10,16 +10,16 @@
    "runtime_compaction": true
   },
   "external_labels": "swe_lite_20240620_sweagent_claude35sonnet_results.json",
-  "builder": "dc-builder-2",
+  "builder": "dc-builder-3",
   "purposes": {
-   "agent_context": "purpose-agent-context-1",
-   "provider_selection": "purpose-provider-3",
-   "execution_control": "purpose-execution-2"
+   "agent_context": "purpose-agent-context-2",
+   "provider_selection": "purpose-provider-4",
+   "execution_control": "purpose-execution-3"
   },
   "policies": [
-   "dc-test-agent-context-1",
-   "dc-test-provider-1",
-   "dc-test-execution-1",
+   "dc-test-agent-context-2",
+   "dc-test-provider-2",
+   "dc-test-execution-2",
    "(시험 정책 -- MS 아님)"
   ],
   "sensor_contract": "llmsensor.state-export/2"
@@ -27,11 +27,11 @@
  "policy_usefulness": {
   "points": 57873,
   "material_context_changes": 3071,
-  "decision_changes": 484,
+  "decision_changes": 450,
   "decision_changes_by_purpose": {
    "agent_context": 0,
    "provider_selection": 0,
-   "execution_control": 484
+   "execution_control": 450
   },
   "by_state": {
    "agent_context/agent.context_pressure": {
@@ -52,16 +52,16 @@
    },
    "execution_control/agent.execution_health": {
     "state_changes": 18,
-    "with_decision_change": 7,
-    "state_impact_rate": 0.3888888888888889,
-    "used_impact_rate": 0.3888888888888889,
+    "with_decision_change": 18,
+    "state_impact_rate": 1.0,
+    "used_impact_rate": 1.0,
     "alone_changes": 0,
     "alone_impact_rate": null
    },
    "execution_control/agent.execution_interruption": {
     "state_changes": 8,
-    "with_decision_change": 3,
-    "state_impact_rate": 0.375,
+    "with_decision_change": 5,
+    "state_impact_rate": 0.625,
     "used_impact_rate": 0.375,
     "alone_changes": 0,
     "alone_impact_rate": null
@@ -76,16 +76,16 @@
    },
    "execution_control/task.completion_state": {
     "state_changes": 300,
-    "with_decision_change": 300,
-    "state_impact_rate": 1.0,
-    "used_impact_rate": 1.0,
+    "with_decision_change": 255,
+    "state_impact_rate": 0.85,
+    "used_impact_rate": 0.85,
     "alone_changes": 0,
     "alone_impact_rate": null
    },
    "execution_control/task.progress_state": {
     "state_changes": 300,
-    "with_decision_change": 300,
-    "state_impact_rate": 1.0,
+    "with_decision_change": 255,
+    "state_impact_rate": 0.85,
     "used_impact_rate": 0.0,
     "alone_changes": 0,
     "alone_impact_rate": null
@@ -100,8 +100,8 @@
    },
    "execution_control/tool": {
     "state_changes": 2456,
-    "with_decision_change": 9,
-    "state_impact_rate": 0.0036644951140065146,
+    "with_decision_change": 22,
+    "state_impact_rate": 0.008957654723127036,
     "used_impact_rate": 0.0,
     "alone_changes": 2431,
     "alone_impact_rate": 0.0
@@ -115,5 +115,10 @@
     "alone_impact_rate": 0.0
    }
   }
+ },
+ "defaulted_points": {
+  "agent_context": 19491,
+  "provider_selection": 19580,
+  "execution_control": 18776
  }
 }

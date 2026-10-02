@@ -179,3 +179,61 @@ def c_purpose(name):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SafeDefault(unittest.TestCase):
+    """BD-23 · BD-76 (CMD-D12): 필수 상태를 몰라 규칙을 못 정하면 목적의 default_decision -- 다른 분기로 지나가지 않는다."""
+
+    def ctx(self, health="UNKNOWN", caps=None, purpose="execution_control"):
+        s = sensor_source()
+        if health == "UNKNOWN":
+            s.put(rec("sensor", "agent:r1", "execution_health", None, "UNKNOWN", evidence=()))
+        elif health == "STALE":
+            s.put(rec("sensor", "agent:r1", "execution_health", "UNRESOLVED_FAILURES", at=NOW - 20 * MIN))
+        caps = {"human_reviewer": True, "retry_budget": True} if caps is None else caps
+        return builder(sensor=s).build(purpose, subject(), now_ms=NOW, capabilities=caps)
+
+    def test_default_resolves_against_capabilities(self):
+        self.assertEqual(self.ctx().default_action, "ESCALATE")
+        self.assertEqual(self.ctx(caps={}).default_action, "STOP")            # 사람이 없으면 STOP (BD-23)
+        self.assertEqual(self.ctx(purpose="provider_selection").default_action, "KEEP_PROVIDER")
+        self.assertEqual(self.ctx(purpose="agent_context").default_action, "KEEP")
+        self.assertEqual(self.ctx(purpose="context_runtime").default_action, "KEEP")
+        self.assertEqual(self.ctx().core_dict()["default_action"], "ESCALATE")   # MS 도 명세 없이 core 에서 읽는다
+
+    def test_unknown_health_while_running_is_default_not_continue(self):
+        c = self.ctx()
+        self.assertEqual(c.value("task.completion_state"), "RUNNING")
+        d = epol.decide(c)
+        self.assertEqual((d.action, d.defaulted), ("ESCALATE", True))
+        d = epol.decide(self.ctx(caps={"retry_budget": True}))
+        self.assertEqual((d.action, d.defaulted), ("STOP", True))           # human_reviewer 없이 ESCALATE 하지 않는다
+
+    def test_stale_failure_is_default_not_continue(self):
+        """실데이터 cc_jsonl_self:self_sna i=154 와 같은 꼴: 미해결 실패가 TTL 을 넘겨 STALE -> RETRY 가 CONTINUE 로 가면 안 된다."""
+        c = self.ctx(health="STALE")
+        self.assertEqual(c.status("agent.execution_health"), "STALE")
+        self.assertEqual(epol.decide(c).action, "ESCALATE")
+
+    def test_known_value_branches_stay(self):
+        s = sensor_source()
+        s.put(rec("sensor", "agent:r1", "execution_health", None, "UNKNOWN", evidence=()))
+        s.put(rec("sensor", "agent:r1", "resource_state", "BUDGET_EXHAUSTED"))
+        c = builder(sensor=s).build("execution_control", subject(), now_ms=NOW, capabilities={"human_reviewer": True})
+        d = epol.decide(c)
+        self.assertEqual((d.action, d.defaulted), ("STOP", False))          # 예산 소진은 아는 값만으로 정해진다
+
+    def test_other_policies_use_the_purpose_default(self):
+        s = sensor_source()
+        s.put(rec("sensor", "runtime:r1", "rate_limit_state", None, "UNKNOWN", evidence=()))
+        c = builder(sensor=s).build("provider_selection", subject(), now_ms=NOW, capabilities={})
+        self.assertEqual((ppol.decide(c).action, ppol.decide(c).defaulted), ("KEEP_PROVIDER", True))
+        s.put(rec("sensor", "agent:r1", "context_pressure", None, "UNKNOWN", evidence=()))
+        c = builder(sensor=s).build("agent_context", subject(), now_ms=NOW, capabilities={})
+        self.assertEqual((cpol.decide(c).action, cpol.decide(c).defaulted), ("KEEP", True))
+
+    def test_default_must_be_a_listed_action(self):
+        from dc import Purpose, PurposeError
+        from dc.purpose import ActionSpec
+        with self.assertRaises(PurposeError):
+            Purpose("p", "v1", (), actions=(ActionSpec("KEEP"),), default_decision=("PANIC",))

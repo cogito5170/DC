@@ -25,7 +25,7 @@ from .purpose import PURPOSES, Purpose, PurposeError, QueryRef, StateRef, is_obj
 from .snapshot import freeze
 from .sources import SourceError, check_source
 
-BUILDER_VERSION = "dc-builder-2"     # -2: core/provenance 분리 · reason 뺌 · 키별 allow_stale (PC-07 · CMD-D6)
+BUILDER_VERSION = "dc-builder-3"     # -2: core/provenance 분리 · reason 뺌 · 키별 allow_stale (PC-07 · CMD-D6) · -3: core.default_action (CMD-D12)
 
 
 @dataclass
@@ -78,7 +78,9 @@ class DecisionContextBuilder:
         avail, missing = self._actions(P, dict(caps))
         qrefs = self._query_refs(P, queries)
         core_q, prov_q = self.run_queries(qrefs, nows)
-        core = Core(P.name, P.version, tuple(sorted(nows.items())), subj.roles, core_states, cons, avail, core_q)
+        default = next((a for a in P.default_decision if a in avail), None)     # 능력이 없어 못 하는 후보는 건너뛴다
+        core = Core(P.name, P.version, tuple(sorted(nows.items())), subj.roles, core_states, cons, avail, core_q,
+                    default)
         used = {r.source for r in P.refs} | {q.source for q in qrefs}
         prov = Provenance(BUILDER_VERSION,
                           tuple((n, tuple(sorted((k, str(v)) for k, v in self.sources[n].versions().items())))

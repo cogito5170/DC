@@ -137,12 +137,12 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 
 | 목적 | 판본 | 상태(필수 / *선택*) | 받는 제약 | 행동(필요 능력) |
 |---|---|---|---|---|
-| `context_runtime` | purpose-cr-2 (요청 질의: `ms_world`) | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
-| `agent_context` | purpose-agent-context-1 (BD-58) | agent: context_pressure / *agent: execution_interruption* | max_context_tokens | KEEP · REDUCE · COMPACT(runtime_compaction) -- 에이전트 런타임 자신의 맥락(Claude Code 자동 압축 등) |
-| `context_policy` | purpose-context-2 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
+| `context_runtime` | purpose-cr-3 (요청 질의: `ms_world`) | session: token_budget · context · latency · complexity · reliability · correction · retry (MS CR `plan(state)` 한 번이 읽는 것 전부) | max_context_chars · max_output_tokens · tool_permission | MS 맥락 동작 그대로: KEEP · COMPRESS · SUMMARIZE · RETRIEVE(retrieve_tool) · DROP · DEFER(retrieve_tool) |
+| `agent_context` | purpose-agent-context-2 (BD-58) | agent: context_pressure / *agent: execution_interruption* | max_context_tokens | KEEP · REDUCE · COMPACT(runtime_compaction) -- 에이전트 런타임 자신의 맥락(Claude Code 자동 압축 등) |
+| `context_policy` | purpose-context-3 | session: token_budget_pressure · context_pressure · task_complexity · answer_reliability · correction_rate / *agent: context_pressure · execution_health* | max_context_chars · must_keep | 위와 같음(-1 의 `COMPACT` 는 MS 에 없어 뺐고 `RETRIEVE` 를 더했다) |
 | `prompt_policy` | purpose-prompt-1 | session: token_budget · context · latency · complexity · reliability · correction · retry | max_output_tokens · tool_permission | FULL/CONCISE_INSTRUCTION · ADD_EXAMPLES · JSON_SCHEMA_OUTPUT(native_json_schema) · SET_REASONING(reasoning_control) · NARROW_TOOLS |
-| `provider_selection` | purpose-provider-3 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
-| `execution_control` | purpose-execution-2 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
+| `provider_selection` | purpose-provider-4 | runtime: rate_limit_state · runtime_reliability, session: latency_pressure · answer_reliability / *agent: resource_state · latency_state* | max_cost_usd · max_latency_ms · allowed_providers · data_residency | KEEP_PROVIDER · SWITCH_PROVIDER(alternate_provider) · RETRY(retry_budget) · WAIT(BD-30) · STOP |
+| `execution_control` | purpose-execution-3 | agent: execution_health, task: progress_state · completion_state, runtime: rate_limit_state / *tool: tool_execution_health(도구마다) · agent: resource_state · execution_interruption · task: quality_state* | max_cost_usd · max_retries · require_tool_confirmation | CONTINUE · RETRY(retry_budget) · ESCALATE(human_reviewer) · STOP |
 
 `context_policy` · `prompt_policy` 의 상태는 MS 의 `AdaptiveContext` · `AdaptivePrompt` 가 실제로 읽는 것과 같다
 (그래서 `policy_state(ctx, "session")` 을 그대로 넘길 수 있다).
@@ -156,7 +156,23 @@ ctx.rows("hot")  맥락에 쓰기 좋은 꼴 -- 쓸 수 없는 속성은 None �
 상태로 거르지 않는다: 요금 한도가 `EXHAUSTED` 여도 `SWITCH_PROVIDER` 는 능력이 있으면 '가능' 이다 -- 바꿀지는 정책이 정한다.
 시험: 상태가 달라도 같은 능력이면 행동 목록이 같다.
 
-### 5.2 목적함수는 문맥에 없다
+### 5.2 안전 기본 결정 -- 목적 명세에 판본으로 (2026-10-02, baseline BD-23 · BD-76 · CMD-D12)
+
+`Purpose.default_decision` 은 순서 있는 후보다. 빌더는 그중 **가능한(능력이 있는) 첫 행동**을 core 의 `default_action` 에 싣는다 --
+core 의 일부라 문맥 id · `reuse_key` 에 들어간다. 정책 · MS 가 같은 값을 읽는다(`ctx.default_action`).
+
+| 목적 | `default_decision` | 사람(`human_reviewer`)이 없으면 |
+|---|---|---|
+| `context_runtime` · `context_policy` · `agent_context` | KEEP | KEEP |
+| `provider_selection` | KEEP_PROVIDER | KEEP_PROVIDER |
+| `execution_control` | ESCALATE, STOP | **STOP** |
+| `prompt_policy` | (없음 -- BD-23 이 값을 정하지 않았다) | -- |
+
+규칙(BD-76): 정책은 **필수 상태의 모름(None)을 지나쳐 다른 분기로 가지 않는다.** 필수 키를 쓸 수 없어 규칙이 정해지지 않으면 `default_action` 을
+쓴다(`refpolicy.default`, 결정에 `defaulted=True`). 아는 값만으로 정해지는 분기(예산 소진 → STOP 등)는 그 앞에 남아도 된다.
+**문맥은 여전히 고르지 않는다**(I6): 기본 결정은 목적이 선언한 값이고, 그것을 쓸지는 정책이 정한다.
+
+### 5.3 목적함수는 문맥에 없다
 
 ```
 State       token_budget_pressure = HIGH          (DC: states)
@@ -274,8 +290,8 @@ baseline 이 이 저장소를 결정 문맥의 기준 구현으로 정했다(BD-
 | `allow_stale` | 목적 명세의 키별 `allow_stale` **그리고** `ctx.value(key, allow_stale=True)` -- 둘 다 명시해야 STALE 값이 쓰인다(CMD-D6 · PC-07 에서 키별 선언으로 고침) |
 | `ContextStore` · `explain(context_id)` | `dc.ContextStore`(put · get · dump · load, 변조 거절). 근거 사슬은 문맥마다 복사하지 않는다(BD-05 의 단점, BD-06) -- `evidence_refs` 로 소스에서 펼친다 |
 | 목적 넷 | DC 이름으로(BD-30). `WAIT` 을 `provider_selection` 에 더했다. `optimize_llm_request`(목적 셋의 합)는 옮기지 않았다 |
-| 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-1`) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
-| Phase 8 정책 쓸모 | `eval/policy_impact.py` -- 같은 301 실행에서 결정 변화 **483 번으로 같다**([`eval/RESULTS_policy_impact.md`](../eval/RESULTS_policy_impact.md)) |
+| 참조 정책 `reference-*-v1` | `refpolicy/`(`dc-test-*-2`, CMD-D12 에서 안전 기본 결정을 쓰게 고침) -- DC 기반 시험 정책. `dc` 패키지 밖, 설치되지 않는다. 입력은 `DecisionContext` 하나(시험이 import 를 본다) |
+| Phase 8 정책 쓸모 | `eval/policy_impact.py` -- 같은 301 실행에서 결정 변화 **483 번으로 같았다**(옮길 때. 지금은 450 -- [`eval/RESULTS_policy_impact.md`](../eval/RESULTS_policy_impact.md)) |
 
 옮기는 중에 찾은 것: Sensor 의 근거 종류 `EXTERNAL_LABEL`(외부 라벨) · `PROVIDER_DECLARED` · `VALIDATED_EXPERIMENT` 가 DC 어휘에 없어, 외부 라벨
 `quality_state` 가 `UNAUTHORIZED_BASIS` 로 거절되고 있었다(처음 돌린 정책 쓸모에서 `quality_state` 영향 0). 근거 어휘를 Sensor 8 개로 넓혔다(PC-14).

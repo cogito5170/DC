@@ -188,9 +188,11 @@ class Core:
     constraints: tuple           # Constraint
     actions: tuple               # 가능한 행동 이름
     queries: tuple = ()          # CoreQuery, 이름 순 (PC-23)
+    default_action: "str | None" = None   # 목적의 안전 기본 결정을 능력으로 고른 것(BD-23 · BD-76). 없으면 None
 
     def to_dict(self) -> dict:
         return {"purpose": self.purpose, "purpose_version": self.purpose_version,
+                "default_action": self.default_action,
                 "queries": {q.name: q.to_dict() for q in self.queries},
                 "as_of": {k: v for k, v in self.as_of},
                 "subject": {r: (list(e) if isinstance(e, tuple) else e) for r, e in self.subject},
@@ -203,7 +205,8 @@ class Core:
                    tuple((r, tuple(e) if isinstance(e, list) else e) for r, e in sorted(d["subject"].items())),
                    tuple(CoreState(k, v[0], v[1]) for k, v in sorted(d["states"].items())),
                    tuple(Constraint.from_dict(c) for c in d["constraints"]), tuple(d["actions"]),
-                   tuple(CoreQuery.from_dict(n, q) for n, q in sorted(d.get("queries", {}).items())))
+                   tuple(CoreQuery.from_dict(n, q) for n, q in sorted(d.get("queries", {}).items())),
+                   d.get("default_action"))
 
 
 # -- 저장되는 것: provenance ------------------------------------------------------------------------------------
@@ -324,6 +327,11 @@ class DecisionContext:
     @property
     def available_actions(self) -> tuple:
         return self.core.actions
+
+    @property
+    def default_action(self) -> "str | None":
+        """목적의 안전 기본 결정 -- 정책이 필수 상태를 몰라 규칙을 정할 수 없을 때 쓴다(BD-76). 가능한 행동 가운데서만 고른다."""
+        return self.core.default_action
 
     def keys(self) -> tuple:
         return tuple(s.key for s in self.core.states)

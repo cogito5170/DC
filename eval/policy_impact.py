@@ -59,6 +59,7 @@ def replay(recs):
     src = SensorSource(E)
     B = DecisionContextBuilder([src])
     seqs = collections.defaultdict(list)
+    defaulted = collections.Counter()      # 목적 -> 필수 상태를 몰라 안전 기본 결정을 쓴 평가점 수(BD-76)
     digest = hashlib.sha256()
     for run in sorted(byrun):
         extra = []
@@ -74,11 +75,12 @@ def replay(recs):
             for purpose, pol in POLICIES:
                 c = B.build(purpose, subj, now_ms=now, capabilities=CAP)
                 dec = pol.decide(c)
+                defaulted[purpose] += bool(getattr(dec, "defaulted", False))
                 views = tuple((s.key, s.value, s.status, s.usable) for s in c.states if s.source == "sensor")
                 material = (views, c.available_actions, c.validity.complete)    # 나이 · as_of 를 뺀 결정 관련 내용
                 seqs[(run, purpose)].append((views, material, dec.action, dec.used))
                 digest.update(f"{run}|{purpose}|{c.id}|{dec.action}".encode())
-    return E, seqs, digest.hexdigest()
+    return E, seqs, digest.hexdigest(), defaulted
 
 
 def impact(seqs):
@@ -118,20 +120,20 @@ def main(argv=None):
     ap.add_argument("--out", default=str(ROOT / "eval" / "results" / "policy_impact.json"))
     a = ap.parse_args(argv)
     recs = load()
-    E, seqs, dg = replay(recs)
-    _, _, dg2 = replay(recs)
+    E, seqs, dg, defaulted = replay(recs)
+    _, _, dg2, _ = replay(recs)
     out = {"runs": len({r for r, _ in seqs}), "deterministic": dg == dg2, "decision_digest": dg[:16],
            "assumptions": {"capabilities": CAP, "external_labels": LABELS.name, "builder": BUILDER_VERSION,
                            "purposes": {p: PURPOSES[p].version for p, _ in POLICIES},
                            "policies": [pol.NAME for _, pol in POLICIES] + ["(시험 정책 -- MS 아님)"],
                            "sensor_contract": E.EXPORT_CONTRACT},
-           "policy_usefulness": impact(seqs)}
+           "policy_usefulness": impact(seqs), "defaulted_points": dict(defaulted)}
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1))
     print(json.dumps({k: out[k] for k in ("runs", "deterministic", "decision_digest")}, ensure_ascii=False))
     u = out["policy_usefulness"]
     print(f"평가점 {u['points']:,} · 결정 관련 문맥 변화 {u['material_context_changes']:,} · 결정 변화 {u['decision_changes']:,} "
-          f"{u['decision_changes_by_purpose']}")
+          f"{u['decision_changes_by_purpose']} · 기본 결정 평가점 {out['defaulted_points']}")
 
 
 if __name__ == "__main__":
