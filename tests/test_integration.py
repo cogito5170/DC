@@ -172,17 +172,27 @@ class WithMS(unittest.TestCase):
         self.assertEqual(sel.plan(st, {})["params"]["budget_chars"], mspolicy.BASE_CONTEXT["budget_chars"])
         self.assertLess(sel.plan(snap, {})["params"]["budget_chars"], mspolicy.BASE_CONTEXT["budget_chars"])
 
-    def test_known_limit_config_input_ages_derived_state(self):
-        """MS 파생의 시각 = 입력 중 가장 오래된 것. 예산(설정)도 입력이라, 실행이 방금 있어도 세션을 연 시각으로 늙는다.
-        기본 목적은 max_age 를 안 줘서 영향이 없다 -- 엄한 목적을 MS 상태에 걸 때의 함정을 붙들어 둔다."""
+    def test_config_input_no_longer_ages_derived_state(self):
+        """한계가 풀렸다(MS PC-03 · BV-03, baseline CMD-D9): 예산은 이제 운영자 설정(role config)이라 파생 시각에 들어가지 않는다.
+        파생 시각 = 관측 입력 중 가장 오래된 것. 그래서 엄한 max_age 를 걸어도 -- 방금 실행이 있었으면 FRESH, 실행이 오래되면 STALE."""
         from dc.purpose import CONTEXT_POLICY
-        self.clock[0] += 200
+        strict = CONTEXT_POLICY.tightened("p-op120s", {"session.token_budget_pressure": 120_000})
+
+        def view():
+            return self.b.build(strict, {"session": self.sid}, now_ms=self.src.now_ms()).state("session.token_budget_pressure")
+        self.clock[0] += 200                                   # 세션을 연 지 200 s 뒤에 새 실행
         self.m.ingest({"source": "ms:run", "entity": self.sid, "signal": "tokens.input_tokens", "value": 19500,
                        "ts": self.clock[0]})
-        strict = CONTEXT_POLICY.tightened("p-op120s", {"session.token_budget_pressure": 120_000})
-        v = self.b.build(strict, {"session": self.sid}, now_ms=self.src.now_ms()).state("session.token_budget_pressure")
-        self.assertEqual(v.status, "STALE")
-        self.assertAlmostEqual(v.age_ms, 200_000)
+        v = view()
+        self.assertEqual((v.status, v.freshness), ("INFERRED", "FRESH"))   # 예전에는 세션을 연 시각으로 늙어 STALE 이었다
+        self.assertAlmostEqual(v.age_ms, 0.0)
+        self.assertEqual(v.value, "HIGH")
+        self.clock[0] += 300                                   # 그 뒤 5 분 동안 새 실행이 없다
+        v = view()
+        self.assertEqual((v.status, v.freshness), ("STALE", "STALE"))
+        self.assertAlmostEqual(v.age_ms, 300_000)
+        self.assertIsNone(v.value)                             # 낡은 값은 core 에 없다
+        self.assertEqual(v.withheld, "HIGH")
 
 
 @unittest.skipIf(msruntime is None or "state_reader" not in getattr(getattr(msruntime, "Runtime", None), "__init__",
