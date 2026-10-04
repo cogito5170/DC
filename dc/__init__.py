@@ -20,6 +20,7 @@ from .model import (StateRecord, Constraint, Action, Issue, Validity, Core, Core
 from .project import StateView
 from .purpose import Purpose, StateRef, QueryRef, ActionSpec, PurposeError, PURPOSES
 from .sources import StaticSource, SensorSource, MSUsageSource, MSGraphSource, SourceError
+from .peer import PeerSource, peer_interaction_purpose, peer_capabilities
 from .builder import DecisionContextBuilder, BUILDER_VERSION
 from .snapshot import from_dict, SnapshotError, digest_of
 from .bridge import policy_state, summary
@@ -29,5 +30,5 @@ from .store import ContextStore
 __all__ = ["StateRecord", "StateView", "Constraint", "Action", "Issue", "Validity", "Core", "CoreState", "Provenance",
            "StateProvenance", "DecisionContext",
            "Subject", "USABLE", "STATUSES", "Purpose", "StateRef", "QueryRef", "ActionSpec", "PurposeError", "PURPOSES",
-           "StaticSource", "SensorSource", "MSUsageSource", "MSGraphSource", "SourceError", "DecisionContextBuilder", "BUILDER_VERSION",
+           "StaticSource", "SensorSource", "MSUsageSource", "MSGraphSource", "PeerSource", "peer_interaction_purpose", "peer_capabilities", "SourceError", "DecisionContextBuilder", "BUILDER_VERSION",
            "from_dict", "SnapshotError", "digest_of", "policy_state", "summary", "MSStateReader", "ContextStore"]

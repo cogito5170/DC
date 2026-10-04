@@ -14,8 +14,8 @@ from .model import DecisionContext
 def policy_state(ctx: DecisionContext, role: str) -> dict:
     out = {}
     for c in ctx.core.states:
-        head, name = c.key.rsplit(".", 1)
-        if head.split("[", 1)[0] == role and "[" not in head:
+        head, _, name = c.key.rpartition(".")
+        if name and head.split("[", 1)[0] == role and "[" not in head:
             out[name] = ctx.value(c.key)          # core 만 읽는다 -- 쓸 수 있을 때만 값(선언된 STALE 도 여기선 None)
     out["decision_context"] = ctx.id
     return out

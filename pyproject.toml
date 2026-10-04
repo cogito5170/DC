@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dc"
-version = "0.1.0"
+version = "0.2.0"
 description = "DC -- Decision Context: State 층과 Policy 층 사이의 계약층(Select · Filter · Validate · Project · Freeze)"
 readme = "README.md"
 requires-python = ">=3.10"

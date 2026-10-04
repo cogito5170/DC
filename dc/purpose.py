@@ -39,6 +39,8 @@ class StateRef:
     allow_stale: bool = False           # 이 키의 STALE 값을 core 에 싣는다(정책이 낡은 값을 쓰겠다고 명세가 선언, CMD-D6)
 
     def key(self, tail: "str | None" = None) -> str:
+        if not self.name:            # 이름 없는 상태(예: 간선 가중치 `pi[j]`) -- 실체 하나가 값 하나
+            return f"{self.role}[{tail}]" if tail else self.role
         return f"{self.role}[{tail}].{self.name}" if tail else f"{self.role}.{self.name}"
 
 
@@ -272,5 +274,21 @@ CONTEXT_RUNTIME = Purpose(
     default_decision=("KEEP",),
 )
 
+# 이웃 노드와의 상호작용(baseline POL-3 BD-309 · NETWORK.md 2.3): 물을지(consult) · 보낼지(send) · 건너뛸지(skip).
+# 이 목적의 refs 는 노드마다 다르다(자기 missing_required · 불확실 ref + 이웃 export) -- 그래서 틀만 데이터로 두고
+# dc.peer.peer_interaction_purpose(...) 가 refs 를 채운다. 이웃 상태도 소스에서 와서 같은 Validate 를 지난다.
+PEER_INTERACTION = Purpose(
+    name="peer_interaction", version="purpose-peer-interaction-1",
+    meaning="이웃에게 물을지 · 보낼지 · 건너뛸지 정하기 위해 알아야 할 것(자기 모자란 필수 상태 · 불확실한 상태 · 이웃 export)",
+    refs=(StateRef(S, "agent", "execution_health"),                   # 기본 틀의 예 -- 노드의 실제 목록으로 바꿔 쓴다
+           StateRef("peer", "peer", "agent.execution_health", required=False),
+           StateRef("net", "pi", "", required=False)),
+    constraints=(),
+    actions=(ActionSpec("consult", ("peer_link", "peer_covers_missing"), "이웃 연결이 있고 이웃 export 가 모자란 ref 를 덮어야"),
+             ActionSpec("send", ("peer_link",), "이웃 연결이 있어야"),
+             ActionSpec("skip", meaning="아무것도 하지 않는다")),
+    default_decision=("skip",),
+)
+
 PURPOSES = {p.name: p for p in (CONTEXT_POLICY, PROMPT_POLICY, PROVIDER_SELECTION, EXECUTION_CONTROL, CONTEXT_RUNTIME,
-                                AGENT_CONTEXT, AGENT_TOOL_CALL)}
+                                AGENT_CONTEXT, AGENT_TOOL_CALL, PEER_INTERACTION)}

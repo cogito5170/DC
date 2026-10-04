@@ -58,15 +58,10 @@ def _required(spec) -> dict:
     return {(r.role, r.name): r.required for r in spec.refs}
 
 
-def _role_name(key: str) -> tuple:
-    head, name = key.rsplit(".", 1)
-    return head.split("[", 1)[0], name
-
-
 def view(ctx, key: str) -> StateView:
     cs = ctx._core_state(key)
     pv = ctx.provenance.state(key)
-    req = _required(spec_of(ctx)).get(_role_name(key), False)
+    req = _required(spec_of(ctx)).get((pv.role, pv.name), False)
     now = dict(ctx.core.as_of).get(pv.source)
     age = None if (pv.observed_at_ms is None or now is None) else now - pv.observed_at_ms
     codes = {i.code for i in pv.issues}
